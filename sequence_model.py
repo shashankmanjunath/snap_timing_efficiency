@@ -92,8 +92,8 @@ class Dataset:
             self.weeks_fnames.append(week_path)
             self.weeks_data.append(pd.read_csv(week_path))
 
-        motion_receiver_target = utils.get_in_motion_at_snap_plays(data)
-        play_ids = motion_receiver_target[["gameId", "playId", "nflId"]]
+        pass_plays = utils.get_pass_plays(data)
+        play_ids = pass_plays[["gameId", "playId", "target_receiver_id"]]
         seq_features, meta_features, player_features, sep = separation_features_labels(
             play_ids,
             data["play"],

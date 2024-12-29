@@ -1,10 +1,15 @@
+import time
 import os
+
+from tqdm import tqdm
 
 import pandas as pd
 import numpy as np
 
 
 def load_data(data_dir: str) -> dict[str, pd.DataFrame]:
+    print("Loading data from disk....")
+    t1 = time.time()
     games_fname = os.path.join(data_dir, "games.csv")
     play_fname = os.path.join(data_dir, "plays.csv")
     players_fname = os.path.join(data_dir, "players.csv")
@@ -16,16 +21,33 @@ def load_data(data_dir: str) -> dict[str, pd.DataFrame]:
         "players": pd.read_csv(players_fname),
         "player_play": pd.read_csv(player_play_fname),
     }
+    load_time = time.time() - t1
+    print(f"Data Loaded! Load time: {load_time:.3f}")
     return data
 
 
-def get_in_motion_at_snap_plays(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    # Getting plays with motion
-    plays = data["player_play"][data["player_play"]["inMotionAtBallSnap"] == True]
+def get_pass_plays(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    player_play = data["player_play"]
+    plays = data["play"][data["play"]["passResult"].isin(["C", "I"])].copy()
 
-    # Finding plays where the motion player was the targeted receiver
-    motion_receiver_target = plays[plays["wasTargettedReceiver"] == True]
-    return motion_receiver_target
+    target_receiver_ids = []
+    for idx, play in tqdm(plays.iterrows(), total=plays.shape[0]):
+        gameId = play["gameId"]
+        playId = play["playId"]
+
+        game_loc = player_play["gameId"] == gameId
+        play_loc = player_play["playId"] == playId
+        play_data = player_play[game_loc & play_loc]
+        rec_nfl_id = play_data[play_data["wasTargettedReceiver"] == 1]["nflId"]
+
+        if rec_nfl_id.size == 0:
+            target_receiver_ids.append(np.nan)
+        else:
+            target_receiver_ids.append(rec_nfl_id.item())
+
+    plays.loc[:, "target_receiver_id"] = target_receiver_ids
+    plays = plays[~plays["target_receiver_id"].isna()]
+    return plays
 
 
 def get_data_play(plays_df: pd.DataFrame, gameId: str, playId: str) -> pd.DataFrame:
