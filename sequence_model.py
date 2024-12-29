@@ -1,39 +1,79 @@
 import os
 
 from fire import Fire
+from tqdm import tqdm
+
 import pandas as pd
+
+import utils
 
 # Separation Timing Efficiency
 
 
 def main(data_dir: str):
-    data = load_data(data_dir)
+    data = utils.load_data(data_dir)
     train_weeks = [1]
     train_dataset = Dataset(weeks=train_weeks, data=data, data_dir=data_dir)
 
 
-def load_data(data_dir: str) -> dict[str, pd.DataFrame]:
-    games_fname = os.path.join(data_dir, "games.csv")
-    play_fname = os.path.join(data_dir, "plays.csv")
-    players_fname = os.path.join(data_dir, "players.csv")
-    player_play_fname = os.path.join(data_dir, "player_play.csv")
+def separation_features_labels(
+    play_ids: pd.DataFrame,
+    play_data: pd.DataFrame,
+    player_data: pd.DataFrame,
+    weeks_data: list[pd.DataFrame],
+) -> tuple[
+    list[list[pd.DataFrame]], list[pd.DataFrame], list[pd.DataFrame], list[float]
+]:
 
-    data = {
-        "games": pd.read_csv(games_fname),
-        "play": pd.read_csv(play_fname),
-        "players": pd.read_csv(players_fname),
-        "player_play": pd.read_csv(player_play_fname),
-    }
-    return data
+    count = 0
+    seq_features = []
+    meta_features = []
+    player_play_features = []
+    label = []
+    for week_data in weeks_data:
+        # Sub-selecting only valid data for faster search later
+        game_loc = week_data["gameId"].isin(play_ids["gameId"])
+        play_loc = week_data["playId"].isin(play_ids["playId"])
+        week_data = week_data[game_loc & play_loc]
 
+        # Iterating throw plays
+        n_rows = play_ids.shape[0]
+        for idx, (gameId, playId, nflId) in tqdm(play_ids.iterrows(), total=n_rows):
+            # Getting all data from plays
+            week_play_data = utils.get_data_play(week_data, gameId, playId)
 
-def get_in_motion_at_snap_plays(data: dict[str, pd.DataFrame]) -> list:
-    # Getting plays with motion
-    plays = data["player_play"][data["player_play"]["inMotionAtBallSnap"] == True]
+            # Getting metadata from play
+            meta_play_data = play_data[
+                (play_data["gameId"] == gameId) & (play_data["playId"] == playId)
+            ]
 
-    # Finding plays where the motion player was the targeted receiver
-    motion_receiver_target = plays[plays["wasTargettedReceiver"] == True]
-    return motion_receiver_target
+            play_player_ids = week_play_data["nflId"].dropna().unique()
+            play_players = player_data[player_data["nflId"].isin(play_player_ids)]
+
+            if meta_play_data["passTippedAtLine"].item():
+                continue
+
+            pre_snap_data = week_play_data[
+                week_play_data["frameType"] == "BEFORE_SNAP"
+            ].sort_values(by="frameId")
+
+            # pass arrival time data
+            pass_arrival_data = utils.get_pass_arrival_time_data(week_play_data)
+
+            if pass_arrival_data.shape[0] == 0:
+                count += 1
+                continue
+
+            min_dist = utils.get_separation(pass_arrival_data, nflId)
+
+            pre_snap_seq = utils.convert_to_sequence(pre_snap_data)
+            seq_features.append(pre_snap_seq)
+            meta_features.append(meta_play_data)
+            player_play_features.append(play_players)
+            label.append(min_dist)
+            pass
+        pass
+    return seq_features, meta_features, player_play_features, label
 
 
 class Dataset:
@@ -52,8 +92,19 @@ class Dataset:
             self.weeks_fnames.append(week_path)
             self.weeks_data.append(pd.read_csv(week_path))
 
-        motion_receiver_target = get_in_motion_at_snap_plays(data)
-        pass
+        motion_receiver_target = utils.get_in_motion_at_snap_plays(data)
+        play_ids = motion_receiver_target[["gameId", "playId", "nflId"]]
+        seq_features, meta_features, player_features, sep = separation_features_labels(
+            play_ids,
+            data["play"],
+            data["players"],
+            self.weeks_data,
+        )
+
+        self.seq_features = seq_features
+        self.meta_features = meta_features
+        self.player_features = player_features
+        self.sep = sep
 
 
 if __name__ == "__main__":
