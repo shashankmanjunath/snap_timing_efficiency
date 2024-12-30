@@ -111,7 +111,7 @@ def convert_to_sequence(play_data_df: pd.DataFrame) -> list[pd.DataFrame]:
 def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
     weeks_data = {}
 
-    for week in tqdm(range(1, 2), desc="Loading Weeks data..."):
+    for week in tqdm(range(1, 10), desc="Loading Weeks data..."):
         week_fname = f"tracking_week_{week}.csv"
         week_path = os.path.join(data_dir, week_fname)
         weeks_data[week] = pd.read_csv(week_path)

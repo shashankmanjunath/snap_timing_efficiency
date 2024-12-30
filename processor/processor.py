@@ -144,6 +144,7 @@ class SeparationDataProcessor:
             print(f"No pass arrival count: {no_pass_arrival_count}")
 
             # Saving Data
+            print(f"Saving Week {week_num}...")
             meta_features = pd.concat(meta_features, axis=0)
             meta_arr = processor.extract_meta_features(meta_features)
             player_play_arr = processor.extract_player_play_features(
@@ -160,3 +161,4 @@ class SeparationDataProcessor:
                 f[f"week_{week_num}/seq_arr"] = seq_arr
                 f[f"week_{week_num}/seq_mask"] = seq_mask
                 pass
+            print("Data saved!")
