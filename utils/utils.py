@@ -8,7 +8,7 @@ import numpy as np
 
 
 def load_data(data_dir: str) -> dict[str, pd.DataFrame]:
-    print("Loading data from disk....")
+    print("Loading data from disk....", end=" ")
     t1 = time.time()
     games_fname = os.path.join(data_dir, "games.csv")
     play_fname = os.path.join(data_dir, "plays.csv")
@@ -22,13 +22,14 @@ def load_data(data_dir: str) -> dict[str, pd.DataFrame]:
         "player_play": pd.read_csv(player_play_fname),
     }
     load_time = time.time() - t1
-    print(f"Data Loaded! Load time: {load_time:.3f}")
+    print(f"Data Loaded! Load time: {load_time:.3f} seconds")
     return data
 
 
-def get_pass_plays(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
-    player_play = data["player_play"]
-    plays = data["play"][data["play"]["passResult"].isin(["C", "I"])].copy()
+def get_pass_plays(player_play: pd.DataFrame, plays: pd.DataFrame) -> pd.DataFrame:
+    #  player_play = data["player_play"]
+    #  plays = data["play"][data["play"]["passResult"].isin(["C", "I"])].copy()
+    plays = plays[plays["passResult"].isin(["C", "I"])].copy()
 
     target_receiver_ids = []
     for idx, play in tqdm(plays.iterrows(), total=plays.shape[0]):
@@ -48,6 +49,18 @@ def get_pass_plays(data: dict[str, pd.DataFrame]) -> pd.DataFrame:
     plays.loc[:, "target_receiver_id"] = target_receiver_ids
     plays = plays[~plays["target_receiver_id"].isna()]
     return plays
+
+
+def get_pre_snap_data(play_data: pd.DataFrame) -> pd.DataFrame:
+    pre_snap_data = play_data[play_data["frameType"] == "BEFORE_SNAP"]
+    pre_snap_data = pre_snap_data.sort_values(by="frameId")
+    lineset_data = pre_snap_data[pre_snap_data["event"] == "line_set"]
+
+    # Sometimes there are multiple line sets recorded. In this case, we choose
+    # the first frame as the official line set
+    lineset_frame = lineset_data["frameId"].unique()[0]
+    pre_snap_data = pre_snap_data[pre_snap_data["frameId"] >= lineset_frame]
+    return pre_snap_data
 
 
 def get_data_play(plays_df: pd.DataFrame, gameId: str, playId: str) -> pd.DataFrame:
@@ -93,3 +106,13 @@ def convert_to_sequence(play_data_df: pd.DataFrame) -> list[pd.DataFrame]:
     for f in frame_list:
         seq.append(play_data_df[play_data_df["frameId"] == f])
     return seq
+
+
+def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
+    weeks_data = {}
+
+    for week in tqdm(range(1, 2), desc="Loading Weeks data..."):
+        week_fname = f"tracking_week_{week}.csv"
+        week_path = os.path.join(data_dir, week_fname)
+        weeks_data[week] = pd.read_csv(week_path)
+    return weeks_data
