@@ -24,7 +24,42 @@ def create_feature_arr(seq_features, seq_mask, meta_features) -> np.ndarray:
     return X
 
 
-def main(data_dir: str):
+def parameter_search(data_dir: str) -> None:
+    train_weeks = [1, 2, 3, 4, 5, 6, 7]
+    proc = processor.SeparationDataProcessor(data_dir)
+    seq_features_train, seq_mask_train, meta_features_train, sep_train = proc.process(
+        train_weeks,
+    )
+    X_train = create_feature_arr(
+        seq_features_train,
+        seq_mask_train,
+        meta_features_train,
+    )
+    y_train = sep_train
+
+    param_grid = {
+        "max_depth": [3, 5, 7],
+        "learning_rate": [0.1, 0.01, 0.001],
+        "subsample": [0.5, 0.7, 1],
+    }
+
+    xgb_model = xgboost.XGBRegressor()
+    print("Starting grid search...")
+    grid_search = sklearn.model_selection.GridSearchCV(
+        xgb_model,
+        param_grid,
+        cv=5,
+        scoring=sklearn.metrics.mean_absolute_error,
+    )
+
+    grid_search.fit(X_train, y_train)
+
+    print("Best set of hyperparameters: ", grid_search.best_params_)
+    print("Best score: ", grid_search.best_score_)
+    return
+
+
+def main(data_dir: str) -> None:
     weeks_nums = [x for x in range(1, 10)]
     kf = sklearn.model_selection.KFold(n_splits=5)
 
@@ -32,9 +67,7 @@ def main(data_dir: str):
         train_weeks = [weeks_nums[idx] for idx in train_weeks_idx]
         test_weeks = [weeks_nums[idx] for idx in test_weeks_idx]
 
-        proc = processor.SeparationDataProcessor(
-            data_dir,
-        )
+        proc = processor.SeparationDataProcessor(data_dir)
 
         print(f"Fold {fold_idx} Loading Data....")
         seq_features_train, seq_mask_train, meta_features_train, sep_train = (
@@ -72,4 +105,9 @@ def main(data_dir: str):
 
 
 if __name__ == "__main__":
-    Fire(main)
+    Fire(
+        {
+            "cv": main,
+            "param_search": parameter_search,
+        }
+    )
