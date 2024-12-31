@@ -32,7 +32,12 @@ def get_pass_plays(player_play: pd.DataFrame, plays: pd.DataFrame) -> pd.DataFra
     plays = plays[plays["passResult"].isin(["C", "I"])].copy()
 
     target_receiver_ids = []
-    for idx, play in tqdm(plays.iterrows(), total=plays.shape[0]):
+    pbar = tqdm(
+        plays.iterrows(),
+        total=plays.shape[0],
+        desc="Loading pass plays:",
+    )
+    for idx, play in pbar:
         gameId = play["gameId"]
         playId = play["playId"]
 
@@ -56,9 +61,15 @@ def get_pre_snap_data(play_data: pd.DataFrame) -> pd.DataFrame:
     pre_snap_data = pre_snap_data.sort_values(by="frameId")
     lineset_data = pre_snap_data[pre_snap_data["event"] == "line_set"]
 
-    # Sometimes there are multiple line sets recorded. In this case, we choose
-    # the first frame as the official line set
-    lineset_frame = lineset_data["frameId"].unique()[0]
+    #  lineset_frame = lineset_data["frameId"].unique()[0]
+    lineset_frame = lineset_data["frameId"].unique().tolist()
+    if len(lineset_frame) >= 1:
+        # Sometimes there are multiple line sets recorded. In this case, we choose
+        # the first frame as the official line set
+        lineset_frame = lineset_frame[0]
+    elif len(lineset_frame) == 0:
+        # No line sets recorded, we do not want to keep the data
+        return pd.DataFrame()
     pre_snap_data = pre_snap_data[pre_snap_data["frameId"] >= lineset_frame]
     return pre_snap_data
 
@@ -80,7 +91,10 @@ def get_pass_arrival_time_data(play_data_df: pd.DataFrame) -> pd.DataFrame:
 
 def get_separation(pass_arrival_data: pd.DataFrame, nflId: str) -> float:
     receiver_data = pass_arrival_data[pass_arrival_data["nflId"] == nflId]
+    if receiver_data.shape[0] > 1:
+        receiver_data = receiver_data.iloc[0].to_frame().T
     off_str = receiver_data["club"]
+
     football_data = pass_arrival_data[pass_arrival_data["displayName"] == "football"]
     pass_arrival_data = pass_arrival_data.drop(
         index=receiver_data.index,
@@ -93,7 +107,7 @@ def get_separation(pass_arrival_data: pd.DataFrame, nflId: str) -> float:
     def_data = pass_arrival_data[pass_arrival_data["club"] != off_str.item()]
     def_pos = def_data[["x", "y"]].to_numpy()
     rec_pos = receiver_data[["x", "y"]].to_numpy()
-    dist = np.sqrt(((def_pos - rec_pos) ** 2).sum(-1))
+    dist = np.sqrt(((def_pos - rec_pos.astype(float)) ** 2).sum(-1))
     min_dist = dist.min()
     return min_dist
 

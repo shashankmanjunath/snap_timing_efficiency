@@ -3,13 +3,27 @@ import numpy as np
 import pandas as pd
 
 
-def get_player_feature_columns() -> list[str]:
-    arr = ["height", "weight", "collegeName", "position", "displayName"]
-    return arr
+#  def get_player_feature_columns() -> list[str]:
+#      arr = ["height", "weight", "collegeName", "position", "displayName_ord"]
+#      return arr
 
 
 def get_seq_feature_columns() -> list[str]:
-    arr = ["club_ord", "x", "y", "s", "a", "dis", "o", "dir"]
+    arr = [
+        "club_ord",
+        "x",
+        "y",
+        "s",
+        "a",
+        "dis",
+        "o",
+        "dir",
+        "height",
+        "weight",
+        "collegeName",
+        "position",
+        "displayName_ord",
+    ]
     return arr
 
 
@@ -50,11 +64,11 @@ def extract_meta_features(meta_features: pd.DataFrame):
     return meta_arr
 
 
-def extract_player_play_features(player_play: list[pd.DataFrame]) -> np.ndarray:
-    cols = get_player_feature_columns()
-    arr = [x[cols].to_numpy() for x in player_play]
-    arr = np.stack(arr, axis=0)
-    return arr
+#  def extract_player_play_features(player_play: list[pd.DataFrame]) -> np.ndarray:
+#      cols = get_player_feature_columns()
+#      arr = [x[cols].to_numpy() for x in player_play]
+#      arr = np.stack(arr, axis=0)
+#      return arr
 
 
 def extract_seq_arr(
@@ -69,6 +83,7 @@ def extract_seq_arr(
         frame_data = [
             seq_feature[seq_feature["frameId"] == frame_id] for frame_id in frames
         ]
+        frame_data = [x.sort_values(by=["position"]) for x in frame_data]
 
         stacked_frames = np.stack([x[cols].to_numpy() for x in frame_data], axis=0)
         mask = np.ones(stacked_frames.shape)
