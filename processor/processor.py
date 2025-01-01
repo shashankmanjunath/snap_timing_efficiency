@@ -89,6 +89,7 @@ class SeparationDataProcessor:
 
         featurizer = processor.DataFeaturizer()
         feat_play_data = featurizer.featurize_play(play_data)
+        feat_player_play_data = featurizer.featurize_player_play(player_play_data)
 
         for week_num in range(1, 10):
             seq_features = []
@@ -114,8 +115,9 @@ class SeparationDataProcessor:
                 desc=f"Processing Week {week_num}",
             )
             for idx, (gameId, playId, nflId) in pbar:
-                # Getting all data from plays
-                week_play_data = utils.get_data_play(week_data, gameId, playId)
+
+                # Getting time-series sequence data from plays
+                week_play_data = utils.get_play_sequence(week_data, gameId, playId)
 
                 if week_play_data.shape[0] == 0:
                     continue
@@ -151,6 +153,14 @@ class SeparationDataProcessor:
 
                 # Getting receiver separation
                 min_dist = utils.get_separation(pass_arrival_data, nflId)
+
+                # Getting specific player data from the play
+                play_overall_data = utils.get_player_play_data(
+                    player_play_data,
+                    week_play_data,
+                    gameId,
+                    playId,
+                )
 
                 # Merging player_play features and sequence features to ensure
                 # ordering

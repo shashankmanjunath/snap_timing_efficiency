@@ -27,15 +27,13 @@ def load_data(data_dir: str) -> dict[str, pd.DataFrame]:
 
 
 def get_pass_plays(player_play: pd.DataFrame, plays: pd.DataFrame) -> pd.DataFrame:
-    #  player_play = data["player_play"]
-    #  plays = data["play"][data["play"]["passResult"].isin(["C", "I"])].copy()
     plays = plays[plays["passResult"].isin(["C", "I"])].copy()
 
     target_receiver_ids = []
     pbar = tqdm(
         plays.iterrows(),
         total=plays.shape[0],
-        desc="Loading pass plays:",
+        desc="Loading pass plays",
     )
     for idx, play in pbar:
         gameId = play["gameId"]
@@ -56,6 +54,32 @@ def get_pass_plays(player_play: pd.DataFrame, plays: pd.DataFrame) -> pd.DataFra
     return plays
 
 
+def get_player_play_data(
+    player_data: pd.DataFrame,
+    play_seq_data: pd.DataFrame,
+    gameId: str,
+    playId: str,
+) -> pd.DataFrame:
+    game_loc = player_data["gameId"] == gameId
+    play_loc = player_data["playId"] == playId
+    play_player_data = player_data[game_loc & play_loc]
+    route_data = play_player_data[
+        [
+            "nflId",
+            "routeRan_ord",
+            "wasRunningRoute_ord",
+            "pff_defensiveCoverageAssignment_ord",
+        ]
+    ]
+    route_data = route_data.replace(np.nan, -1.0)
+    # TODO: get route depth data
+    #  route_runners = route_data[route_data["wasRunningRoute"] == 1.0]
+    #  runner_seq = play_seq_data[play_seq_data["nflId"].isin(route_runners["nflId"])]
+    #  runner_seq = runner_seq.sort_values(by=["frameId"])
+    #  start_pos = runner_seq["event"]
+    return route_data
+
+
 def get_pre_snap_data(play_data: pd.DataFrame) -> pd.DataFrame:
     pre_snap_data = play_data[play_data["frameType"] == "BEFORE_SNAP"]
     pre_snap_data = pre_snap_data.sort_values(by="frameId")
@@ -74,7 +98,7 @@ def get_pre_snap_data(play_data: pd.DataFrame) -> pd.DataFrame:
     return pre_snap_data
 
 
-def get_data_play(plays_df: pd.DataFrame, gameId: str, playId: str) -> pd.DataFrame:
+def get_play_sequence(plays_df: pd.DataFrame, gameId: str, playId: str) -> pd.DataFrame:
     iter_game_loc = plays_df["gameId"] == gameId
     iter_play_loc = plays_df["playId"] == playId
     week_play_data = plays_df[iter_game_loc & iter_play_loc]
@@ -125,7 +149,9 @@ def convert_to_sequence(play_data_df: pd.DataFrame) -> list[pd.DataFrame]:
 def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
     weeks_data = {}
 
-    for week in tqdm(range(1, 10), desc="Loading Weeks data..."):
+    for week in tqdm(range(1, 10), desc="Loading Weeks data"):
+        if week not in [1, 2]:
+            continue
         week_fname = f"tracking_week_{week}.csv"
         week_path = os.path.join(data_dir, week_fname)
         weeks_data[week] = pd.read_csv(week_path)

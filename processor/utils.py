@@ -118,6 +118,12 @@ class DataFeaturizer:
         self.club_func = sklearn.preprocessing.OrdinalEncoder()
         self.club_fit = False
 
+        self.play_func = sklearn.preprocessing.OrdinalEncoder()
+        self.play_fit = False
+
+        self.route_func = sklearn.preprocessing.OrdinalEncoder()
+        self.route_fit = False
+
     def featurize_week(self, week_data: pd.DataFrame) -> pd.DataFrame:
         week_data["o"] = week_data["o"] / 360.0
         if not self.club_fit:
@@ -129,8 +135,19 @@ class DataFeaturizer:
 
     def featurize_play(self, play_data: pd.DataFrame):
         cols = ["possessionTeam", "defensiveTeam"]
-        if not self.club_fit:
-            self.club_func.fit(play_data[cols])
+        if not self.play_fit:
+            self.play_func.fit(play_data[cols])
+            self.play_fit = True
 
-        play_data[cols] = self.club_func.transform(play_data[cols])
+        play_data[cols] = self.play_func.transform(play_data[cols])
         return play_data
+
+    def featurize_player_play(self, player_play_data: pd.DataFrame):
+        cols = ["routeRan", "wasRunningRoute", "pff_defensiveCoverageAssignment"]
+        if not self.route_fit:
+            self.route_func.fit(player_play_data[cols])
+            self.route_fit = True
+
+        ord_cols = [x + "_ord" for x in cols]
+        player_play_data[ord_cols] = self.route_func.transform(player_play_data[cols])
+        return player_play_data
