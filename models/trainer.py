@@ -4,42 +4,11 @@ import torch.nn.functional as F
 import torch.nn as nn
 import torch
 
-import tensordict
+import pytorch_warmup as warmup
 import wandb
 
 
-__all__ = [
-    "TimeseriesDataset",
-    "TransformerTrainer",
-]
-
-
-class TimeseriesDataset:
-    def __init__(
-        self,
-        feature_arr: list[torch.Tensor],
-        categorical_arr: list[torch.Tensor],
-        label_arr: list[float],
-    ):
-        self.feature_arr = feature_arr
-        self.categorical_arr = categorical_arr
-        self.label_arr = label_arr
-
-        if len(self.feature_arr) != len(self.categorical_arr):
-            raise RuntimeError(
-                "Time-series features and categorical Features are not of equal size!"
-            )
-        if len(self.feature_arr) != len(self.label_arr):
-            raise RuntimeError("Features and labels are not of equal size!")
-
-    def __len__(self) -> int:
-        return len(self.feature_arr)
-
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor, float]:
-        feat = torch.as_tensor(self.feature_arr[idx])
-        cat = torch.as_tensor(self.categorical_arr[idx])
-        label = torch.as_tensor(self.label_arr[idx])
-        return feat, cat, label
+__all__ = ["TransformerTrainer"]
 
 
 class TransformerTrainer:
@@ -54,8 +23,8 @@ class TransformerTrainer:
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
         self.use_wandb = use_wandb
-        self.num_epochs = 5000
-        self.lr = 1e-3
+        self.num_epochs = 500
+        self.lr = 1e-1
         self.batch_size = 4
 
         self.device = torch.device("cpu")
@@ -75,7 +44,23 @@ class TransformerTrainer:
             shuffle=True,
         )
 
+        self.warmup_period = 2000
+        self.num_steps = len(self.train_loader) * self.num_epochs - self.warmup_period
+        self.t0 = self.num_steps // 3
+        self.lr_min = 3e-5
+        self.max_step = self.t0 * 3 + self.warmup_period
+
         self.optim = torch.optim.Adam(self.network.parameters(), lr=self.lr)
+        self.lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            self.optim,
+            T_0=self.t0,
+            T_mult=1,
+            eta_min=self.lr_min,
+        )
+        self.warmup_scheduler = warmup.LinearWarmup(
+            self.optim,
+            warmup_period=self.warmup_period,
+        )
         self.criterion = nn.MSELoss()
 
         if self.use_wandb:
@@ -93,6 +78,7 @@ class TransformerTrainer:
             pbar = tqdm(self.train_loader, desc=f"[{epoch+1}/{self.num_epochs}]")
             self.network.train()
             for feat, mask, meta_feat, label in pbar:
+                lr = self.optim.param_groups[0]["lr"]
                 feat = feat.to(self.device).float()
                 mask = mask.to(self.device).bool()
                 meta_feat = meta_feat.to(self.device).float()
@@ -109,9 +95,15 @@ class TransformerTrainer:
 
                 loss.backward()
                 self.optim.step()
+                with self.warmup_scheduler.dampening():
+                    if self.warmup_scheduler.last_step + 1 >= self.warmup_period:
+                        self.lr_scheduler.step()
 
                 if self.use_wandb:
-                    self.run.log({"train_loss": loss.item()})
+                    self.run.log({"train_loss": loss.item(), "lr": lr})
+
+            if self.warmup_scheduler.last_step + 1 >= self.max_step:
+                break
 
             if epoch % 10 == 0:
                 test_loss = self.test()

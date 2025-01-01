@@ -1,5 +1,6 @@
 from fire import Fire
 
+import sklearn.metrics
 import torch
 
 import processor
@@ -45,8 +46,20 @@ class Dataset:
         self.meta_features = torch.as_tensor(meta_features)
         self.sep = torch.as_tensor(sep)
 
+        self.get_baseline_acc()
+
     def __len__(self):
         return self.seq_features.shape[0]
+
+    def get_baseline_acc(self):
+        mean_val = self.sep.mean()
+        arr = torch.Tensor(self.sep.shape).fill_(mean_val)
+        test_acc = sklearn.metrics.mean_absolute_error(
+            self.sep.cpu().numpy().squeeze(),
+            arr.cpu().numpy(),
+        )
+        print(f"Baseline Accuracy: {test_acc:.3f}")
+        pass
 
     def __getitem__(self, idx):
         # Removing football location
