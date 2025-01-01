@@ -79,10 +79,6 @@ class SeparationDataProcessor:
         player_data = data["players"]
         player_play_data = data["player_play"]
 
-        print("Ordinalizing Play and Player Data...", end=" ")
-        player_data = processor.ordinalize_player_data(player_data)
-        print("Finished!")
-
         weeks_data = utils.load_weeks_data(self.data_dir)
         pass_plays = utils.get_pass_plays(player_play_data, play_data)
         play_ids = pass_plays[["gameId", "playId", "target_receiver_id"]]
@@ -90,6 +86,7 @@ class SeparationDataProcessor:
         featurizer = processor.DataFeaturizer()
         feat_play_data = featurizer.featurize_play(play_data)
         feat_player_play_data = featurizer.featurize_player_play(player_play_data)
+        player_data = featurizer.featurize_player_data(player_data)
 
         for week_num in range(1, 10):
             seq_features = []
@@ -156,7 +153,7 @@ class SeparationDataProcessor:
 
                 # Getting specific player data from the play
                 play_overall_data = utils.get_player_play_data(
-                    player_play_data,
+                    feat_player_play_data,
                     week_play_data,
                     gameId,
                     playId,
@@ -164,9 +161,6 @@ class SeparationDataProcessor:
 
                 # Merging player_play features and sequence features to ensure
                 # ordering
-                play_players = play_players.rename(
-                    columns={"displayName": "displayName_ord"}
-                )
                 pre_snap_data = pre_snap_data.merge(
                     play_players,
                     how="outer",
@@ -196,8 +190,8 @@ class SeparationDataProcessor:
                 label.append(min_dist)
                 # TODO: Add some features about route type, depth, target
                 # receiver/read, etc.?
-                #  if idx > 100:
-                #      break
+                if idx > 100:
+                    break
 
             print(f"No line set failures: {no_line_set_count}")
             print(f"No pass arrival count: {no_pass_arrival_count}")
@@ -216,7 +210,7 @@ class SeparationDataProcessor:
                 print(f"Saving Week {week_num}...")
                 with h5py.File(self.cache_file_fname, "a") as f:
                     f[f"week_{week_num}/separation_arr"] = label
-                    f[f"week_{week_num}/meta_arr"] = meta_arr
-                    f[f"week_{week_num}/seq_arr"] = seq_arr
+                    f[f"week_{week_num}/meta_arr"] = meta_arr.astype(float)
+                    f[f"week_{week_num}/seq_arr"] = seq_arr.astype(float)
                     f[f"week_{week_num}/seq_mask"] = seq_mask
                 print("Data saved!")

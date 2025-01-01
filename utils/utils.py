@@ -63,15 +63,7 @@ def get_player_play_data(
     game_loc = player_data["gameId"] == gameId
     play_loc = player_data["playId"] == playId
     play_player_data = player_data[game_loc & play_loc]
-    route_data = play_player_data[
-        [
-            "nflId",
-            "routeRan_ord",
-            "wasRunningRoute_ord",
-            "pff_defensiveCoverageAssignment_ord",
-        ]
-    ]
-    route_data = route_data.replace(np.nan, -1.0)
+
     after_snap = play_seq_data[play_seq_data["frameType"] == "AFTER_SNAP"]
     pass_arrival_frame = (
         get_pass_arrival_time_data(play_seq_data)["frameId"].unique().item()
@@ -95,7 +87,7 @@ def get_player_play_data(
     #  runner_seq = runner_seq.sort_values(by=["frameId"])
     #  start_pos = runner_seq["event"]
     dist_df = pd.DataFrame({"nflId": player_ids, "maxDist": max_dist})
-    route_data = route_data.merge(dist_df, how="outer", on="nflId")
+    route_data = play_player_data.merge(dist_df, how="outer", on="nflId")
     return route_data
 
 
