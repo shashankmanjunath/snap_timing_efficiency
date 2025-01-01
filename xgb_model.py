@@ -1,5 +1,6 @@
 from fire import Fire
 
+import sklearn.linear_model
 import sklearn.metrics
 import numpy as np
 import xgboost
@@ -39,10 +40,10 @@ def parameter_search(data_dir: str) -> None:
     y_train = sep_train
 
     param_grid = {
-        "max_depth": [3, 5, 7, 10, 20, 50],
+        "max_depth": [3, 5, 7],
         "learning_rate": [0.01],
         "subsample": [0.5, 0.7, 1],
-        "colsample_bytree": [0.5, 0.7, 1],
+        #  "colsample_bytree": [0.5, 0.7, 1],
         "lambda": [0.1, 1.0, 10.0],
     }
 
@@ -60,6 +61,68 @@ def parameter_search(data_dir: str) -> None:
     print("Best set of hyperparameters: ", grid_search.best_params_)
     print("Best score: ", grid_search.best_score_)
     return
+
+
+def lr_model(data_dir: str) -> None:
+    weeks_nums = [x for x in range(1, 3)]
+    n_splits = min(len(weeks_nums), 5)
+    kf = sklearn.model_selection.KFold(n_splits=n_splits)
+
+    for fold_idx, (train_weeks_idx, test_weeks_idx) in enumerate(kf.split(weeks_nums)):
+        train_weeks = [weeks_nums[idx] for idx in train_weeks_idx]
+        test_weeks = [weeks_nums[idx] for idx in test_weeks_idx]
+
+        proc = processor.SeparationDataProcessor(data_dir)
+
+        print(f"Fold {fold_idx} Loading Data....")
+        seq_features_train, seq_mask_train, meta_features_train, sep_train = (
+            proc.process(
+                train_weeks,
+            )
+        )
+        X_train = create_feature_arr(
+            seq_features_train,
+            seq_mask_train,
+            meta_features_train,
+        )
+        y_train = sep_train
+        seq_features_test, seq_mask_test, meta_features_test, sep_test = proc.process(
+            test_weeks,
+        )
+        X_test = create_feature_arr(
+            seq_features_test,
+            seq_mask_test,
+            meta_features_test,
+        )
+        y_test = sep_test
+
+        # Train/Test Split
+        lr = sklearn.linear_model.LinearRegression()
+        lr.fit(X_train, y_train)
+        preds_train = lr.predict(X_train)
+        preds_test = lr.predict(X_test)
+        train_mae = sklearn.metrics.mean_absolute_error(y_train, preds_train)
+        test_mae = sklearn.metrics.mean_absolute_error(y_test, preds_test)
+
+        train_baseline = np.zeros(y_train.shape) + np.mean(y_train)
+        test_baseline = np.zeros(y_test.shape) + np.mean(y_test)
+
+        baseline_train_mae = sklearn.metrics.mean_absolute_error(
+            y_train,
+            train_baseline,
+        )
+        baseline_test_mae = sklearn.metrics.mean_absolute_error(
+            y_test,
+            test_baseline,
+        )
+
+        print("-----")
+        print(f"Baseline Train Accuracy: {baseline_train_mae:.3f}")
+        print(f"Fold {fold_idx} Train MAE: {train_mae:.3f}")
+        print("")
+        print(f"Baseline Test Accuracy: {baseline_test_mae:.3f}")
+        print(f"Fold {fold_idx} Test MAE: {test_mae:.3f}")
+        print("-----")
 
 
 def main(data_dir: str) -> None:
@@ -100,6 +163,7 @@ def main(data_dir: str) -> None:
             learning_rate=0.01,
             max_depth=7,
             subsample=0.7,
+            reg_lambda=10.0,
         )
         bst.fit(X_train, y_train)
         preds_train = bst.predict(X_train)
@@ -124,7 +188,7 @@ def main(data_dir: str) -> None:
         print(f"Baseline Train Accuracy: {baseline_train_mae:.3f}")
         print(f"Fold {fold_idx} Train MAE: {train_mae:.3f}")
         print("")
-        print(f"Baseline Test Accuracy: {baseline_train_mae:.3f}")
+        print(f"Baseline Test Accuracy: {baseline_test_mae:.3f}")
         print(f"Fold {fold_idx} Test MAE: {test_mae:.3f}")
         print("-----")
     return
@@ -133,7 +197,8 @@ def main(data_dir: str) -> None:
 if __name__ == "__main__":
     Fire(
         {
-            "cv": main,
+            "xgb": main,
+            "lr": lr_model,
             "param_search": parameter_search,
         }
     )

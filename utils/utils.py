@@ -72,11 +72,30 @@ def get_player_play_data(
         ]
     ]
     route_data = route_data.replace(np.nan, -1.0)
+    after_snap = play_seq_data[play_seq_data["frameType"] == "AFTER_SNAP"]
+    pass_arrival_frame = (
+        get_pass_arrival_time_data(play_seq_data)["frameId"].unique().item()
+    )
+    post_snap = after_snap[after_snap["frameId"] <= pass_arrival_frame]
+    post_snap = post_snap.sort_values(by="frameId")
+
+    snap_data = play_seq_data[play_seq_data["event"] == "ball_snap"]
+    ball_data = snap_data[snap_data["displayName"] == "football"]
+    ball_pos = ball_data["y"].item()
+
+    player_ids = post_snap["nflId"].dropna().unique()
+    max_dist = [
+        (post_snap[post_snap["nflId"] == player_id]["y"] - ball_pos).max()
+        for player_id in player_ids
+    ]
+
     # TODO: get route depth data
     #  route_runners = route_data[route_data["wasRunningRoute"] == 1.0]
     #  runner_seq = play_seq_data[play_seq_data["nflId"].isin(route_runners["nflId"])]
     #  runner_seq = runner_seq.sort_values(by=["frameId"])
     #  start_pos = runner_seq["event"]
+    dist_df = pd.DataFrame({"nflId": player_ids, "maxDist": max_dist})
+    route_data = route_data.merge(dist_df, how="outer", on="nflId")
     return route_data
 
 

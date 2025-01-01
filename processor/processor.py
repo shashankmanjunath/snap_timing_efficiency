@@ -172,7 +172,24 @@ class SeparationDataProcessor:
                     how="outer",
                     on="nflId",
                 )
+                pre_snap_data = pre_snap_data.merge(
+                    play_overall_data,
+                    how="outer",
+                    on="nflId",
+                )
                 #  pre_snap_data = pre_snap_data.sort_values(by=["frameId", "position"])
+                # FEATURES:
+                #  1. features that account for quarterback arm strength
+                #  2. the receiver’s separation at the time the QB targeted them
+                #  3. he horizontal and vertical position of the receiver on the field at the time of
+                #  the throw,
+                #  4. where the receiver lined up pre-snap
+                #  5. the distance to the goal line
+                #  6. the amount of break in the receiver’s route during the football’s journey through the air after it was
+                #  released
+                #  7. the depth of the QB’s drop, the number of other routes that were being run on the play
+                #  8. if the play was a play-action pass or a screen
+                #  9. and the number of deep safeties.
 
                 seq_features.append(pre_snap_data)
                 meta_features.append(meta_play_data)
