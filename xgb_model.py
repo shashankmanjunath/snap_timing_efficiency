@@ -6,6 +6,7 @@ import sklearn.metrics
 import pandas as pd
 import numpy as np
 import xgboost
+import h5py
 
 import processor
 
@@ -35,28 +36,34 @@ def get_position_cols() -> list[str]:
     return arr
 
 
-def create_feature_arr(data_dict: dict[str, np.ndarray]) -> np.ndarray:
+def decode(arr: list) -> list[str]:
+    return [x.decode("utf-8") for x in arr]
+
+
+def create_feature_arr(f: h5py.File) -> np.ndarray:
     # Creating array with final fied positions and player data of players
     X = []
-    n = data_dict["seq_arr"].shape[0]
+    n = f["seq_arr"].shape[0]
     for idx in tqdm(range(n), desc="Processing data into array..."):
         # Extracting final positions of players
-        seq_mask = data_dict["seq_mask_arr"][idx, :, 0, 0]
-        pos_arr = data_dict["seq_arr"][idx, seq_mask, :, :][-1, :, :]
+        seq_mask = f["seq_mask"][idx, :, 0, 0].astype(int)
+        idxs = np.where(seq_mask)[0]
+        seq_len = idxs.max() + 1
+        pos_arr = f["seq_arr"][idx, :seq_len, :, :][-1, :, :]
 
         # Dropping row with nan value (this is the ball)
         pos_arr = pos_arr[~np.isnan(pos_arr).any(axis=1)]
         pos_df = pd.DataFrame(
             pos_arr,
-            columns=data_dict["seq_cols"],
+            columns=decode(f["seq_cols"]),
         )
         play_players_df = pd.DataFrame(
-            data_dict["play_players_arr"][idx, :, :],
-            columns=data_dict["play_players_cols"],
+            f["play_players_arr"][idx, :, :],
+            columns=decode(f["play_players_cols"]),
         )
         play_overall_df = pd.DataFrame(
-            data_dict["play_overall_arr"][idx, :, :],
-            columns=data_dict["play_overall_cols"],
+            f["play_overall_arr"][idx, :, :],
+            columns=decode(f["play_overall_cols"]),
         )
         pos_df = pos_df.merge(play_players_df, how="outer", on="nflId")
         pos_df = pos_df.merge(play_overall_df, how="outer", on="nflId")
@@ -67,7 +74,7 @@ def create_feature_arr(data_dict: dict[str, np.ndarray]) -> np.ndarray:
         pos_df = pos_df.drop(["nflId", "position_ord"], axis=1)
         pos_arr = pos_df.to_numpy()
 
-        meta_feat = data_dict["meta_arr"][idx, :]
+        meta_feat = f["meta_arr"][idx, :]
         feat_arr = np.concatenate((pos_arr.reshape(-1), meta_feat), axis=-1)
         X.append(feat_arr)
     X = np.stack(X)
@@ -175,7 +182,7 @@ def lr_model(data_dir: str) -> None:
 
 
 def main(data_dir: str) -> None:
-    weeks_nums = [x for x in range(1, 3)]
+    weeks_nums = [x for x in range(1, 10)]
     n_splits = min(len(weeks_nums), 5)
     kf = sklearn.model_selection.KFold(n_splits=n_splits)
 
@@ -186,13 +193,11 @@ def main(data_dir: str) -> None:
         proc = processor.SeparationDataProcessor(data_dir)
 
         print(f"Fold {fold_idx} Loading Data....")
-        train_dict = proc.process(train_weeks)
-        X_train = create_feature_arr(train_dict)
-        y_train = train_dict["label_arr"]
+        X_train, y_train = proc.process(train_weeks)
+        X_test, y_test = proc.process(test_weeks)
 
-        test_dict = proc.process(test_weeks)
-        X_test = create_feature_arr(test_dict)
-        y_test = test_dict["label_arr"]
+        print(f"Train Samples: {X_train.shape[0]}")
+        print(f"Test Samples: {X_test.shape[0]}")
 
         # Train/Test Split
         bst = xgboost.XGBRegressor(

@@ -9,6 +9,7 @@ import numpy as np
 import h5py
 
 import processor
+import xgb_model
 import utils
 
 
@@ -23,7 +24,7 @@ class SeparationDataProcessor:
         self.force_proc = force_proc
         self.save = save
 
-        self.cache_file_fname = os.path.join(data_dir, "cache_dataset.hdf5")
+        self.cache_file_fname = os.path.join(data_dir, "cache_dataset_2.hdf5")
 
         # Setting sampling rate
         self.samp_rate = 10.0
@@ -34,11 +35,11 @@ class SeparationDataProcessor:
         # Getting the max sequence length
         self.max_seq_len = int(self.samp_rate * self.max_seq_time)
 
-    def process(self, weeks: list[int]) -> dict[str, np.ndarray]:
+    def process(self, weeks: list[int]) -> tuple[np.ndarray, np.ndarray]:
         if not self.check_saved_cache():
             self.calc_features()
-        data_dict = self.load_data(weeks)
-        return data_dict
+        X, y = self.load_data(weeks)
+        return X, y
 
     def check_saved_cache(self) -> bool:
         if self.force_proc:
@@ -51,44 +52,27 @@ class SeparationDataProcessor:
     def load_data(
         self,
         weeks: list[int],
-    ) -> dict[str, typing.Union[np.ndarray, list]]:
-        seq_arr = []
-        seq_mask_arr = []
-        meta_arr = []
-        play_players_arr = []
-        play_overall_arr = []
+    ) -> tuple[np.ndarray, np.ndarray]:
+        #  seq_arr = []
+        #  seq_mask_arr = []
+        #  meta_arr = []
+        #  play_players_arr = []
+        #  play_overall_arr = []
+        X = []
         label_arr = []
+        t1 = time.time()
         with h5py.File(self.cache_file_fname, "r") as f:
             for week in weeks:
                 week_key = f"week_{week}"
+                feat_arr_week = xgb_model.create_feature_arr(f[week_key])
+                X.append(feat_arr_week)
+                label_arr.append(f[week_key]["separation_arr"][()])
 
-                # Arrays
-                seq_arr.append(f[week_key]["seq_arr"])
-                seq_mask_arr.append(f[week_key]["seq_mask"])
-                meta_arr.append(f[week_key]["meta_arr"])
-                play_players_arr.append(f[week_key]["play_players_arr"])
-                play_overall_arr.append(f[week_key]["play_overall_arr"])
-                label_arr.append(f[week_key]["separation_arr"])
-
-                # Columns
-                meta_cols = f[week_key]["meta_cols"][()]
-                seq_cols = f[week_key]["seq_cols"][()]
-                play_players_cols = f[week_key]["play_players_cols"][()]
-                play_overall_cols = f[week_key]["play_overall_cols"][()]
-
-            output_dict = {}
-            output_dict["seq_arr"] = np.concatenate(seq_arr, axis=0)
-            seq_mask_arr = np.concatenate(seq_mask_arr, axis=0).astype(bool)
-            output_dict["seq_mask_arr"] = seq_mask_arr
-            output_dict["meta_arr"] = np.concatenate(meta_arr, axis=0)
-            output_dict["play_players_arr"] = np.concatenate(play_players_arr, axis=0)
-            output_dict["play_overall_arr"] = np.concatenate(play_overall_arr, axis=0)
-            output_dict["label_arr"] = np.concatenate(label_arr, axis=0)
-            output_dict["meta_cols"] = decode(meta_cols)
-            output_dict["seq_cols"] = decode(seq_cols)
-            output_dict["play_players_cols"] = decode(play_players_cols)
-            output_dict["play_overall_cols"] = decode(play_overall_cols)
-        return output_dict
+        X = np.concatenate(X, axis=0)
+        y = np.concatenate(label_arr, axis=0)
+        t_load = time.time() - t1
+        print(f"Cache load time: {t_load:.3f}")
+        return X, y
 
     def calc_features(self) -> None:
         data = utils.load_data(self.data_dir)
@@ -179,32 +163,19 @@ class SeparationDataProcessor:
                     playId,
                 )
 
-                # Merging player_play features and sequence features to ensure
-                # ordering
-                #  pre_snap_data = pre_snap_data.merge(
-                #      play_players,
-                #      how="outer",
-                #      on="nflId",
-                #  )
-                #  pre_snap_data = pre_snap_data.merge(
-                #      play_overall_data,
-                #      how="outer",
-                #      on="nflId",
-                #  )
-                #  pre_snap_data = pre_snap_data.sort_values(by=["frameId", "position"])
-
                 # FEATURES:
-                #  1. features that account for quarterback arm strength
-                #  2. the receiver’s separation at the time the QB targeted them
-                #  3. he horizontal and vertical position of the receiver on the field at the time of
-                #  the throw,
-                #  4. where the receiver lined up pre-snap
-                #  5. the distance to the goal line
-                #  6. the amount of break in the receiver’s route during the football’s journey through the air after it was
-                #  released
-                #  7. the depth of the QB’s drop, the number of other routes that were being run on the play
-                #  8. if the play was a play-action pass or a screen
-                #  9. and the number of deep safeties.
+                #  1. Features that account for quarterback arm strength
+                #  2. The receiver’s separation at the time the QB targeted them
+                #  3. The horizontal and vertical position of the receiver on the
+                #     field at the time of the throw,
+                #  4. Where the receiver lined up pre-snap
+                #  5. The distance to the goal line
+                #  6. The amount of break in the receiver’s route during the
+                #     football’s journey through the air after it was released
+                #  7. The depth of the QB’s drop, the number of other routes
+                #     that were being run on the play
+                #  8. If the play was a play-action pass or a screen
+                #  9. The number of deep safeties.
 
                 play_players_features.append(play_players)
                 play_overall_features.append(play_overall_data)
@@ -261,7 +232,3 @@ class SeparationDataProcessor:
                     f[f"week_{week_num}/play_overall_cols"] = play_overall_cols
                 t_save = time.time() - t2
                 print(f"Data saved! Saving time: {t_save:.3f}")
-
-
-def decode(arr: list) -> list[str]:
-    return [x.decode("utf-8") for x in arr]
