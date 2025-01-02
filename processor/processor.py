@@ -71,10 +71,10 @@ class SeparationDataProcessor:
                 label_arr.append(f[week_key]["separation_arr"])
 
                 # Columns
-                meta_cols = f[week_key]["meta_cols"]
-                seq_cols = f[week_key]["seq_cols"]
-                play_players_cols = f[week_key]["play_players_cols"]
-                play_overall_cols = f[week_key]["play_overall_cols"]
+                meta_cols = f[week_key]["meta_cols"][()]
+                seq_cols = f[week_key]["seq_cols"][()]
+                play_players_cols = f[week_key]["play_players_cols"][()]
+                play_overall_cols = f[week_key]["play_overall_cols"][()]
 
             output_dict = {}
             output_dict["seq_arr"] = np.concatenate(seq_arr, axis=0)
@@ -84,10 +84,10 @@ class SeparationDataProcessor:
             output_dict["play_players_arr"] = np.concatenate(play_players_arr, axis=0)
             output_dict["play_overall_arr"] = np.concatenate(play_overall_arr, axis=0)
             output_dict["label_arr"] = np.concatenate(label_arr, axis=0)
-            output_dict["meta_cols"] = meta_cols
-            output_dict["seq_cols"] = seq_cols
-            output_dict["play_players_cols"] = play_players_cols
-            output_dict["play_overall_cols"] = play_overall_cols
+            output_dict["meta_cols"] = decode(meta_cols)
+            output_dict["seq_cols"] = decode(seq_cols)
+            output_dict["play_players_cols"] = decode(play_players_cols)
+            output_dict["play_overall_cols"] = decode(play_overall_cols)
         return output_dict
 
     def calc_features(self) -> None:
@@ -106,8 +106,8 @@ class SeparationDataProcessor:
         player_data = featurizer.featurize_player_data(player_data)
 
         for week_num in range(1, 10):
-            if week_num > 3:
-                continue
+            #  if week_num > 3:
+            #      continue
             play_players_features = []
             play_overall_features = []
             seq_features = []
@@ -261,3 +261,7 @@ class SeparationDataProcessor:
                     f[f"week_{week_num}/play_overall_cols"] = play_overall_cols
                 t_save = time.time() - t2
                 print(f"Data saved! Saving time: {t_save:.3f}")
+
+
+def decode(arr: list) -> list[str]:
+    return [x.decode("utf-8") for x in arr]

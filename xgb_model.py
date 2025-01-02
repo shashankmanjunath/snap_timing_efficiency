@@ -1,25 +1,73 @@
 from fire import Fire
+from tqdm import tqdm
 
 import sklearn.linear_model
 import sklearn.metrics
+import pandas as pd
 import numpy as np
 import xgboost
 
 import processor
 
 
+def get_position_cols() -> list[str]:
+    arr = [
+        "position_C",
+        "position_CB",
+        "position_DB",
+        "position_DE",
+        "position_DT",
+        "position_FB",
+        "position_FS",
+        "position_G",
+        "position_ILB",
+        "position_LB",
+        "position_MLB",
+        "position_NT",
+        "position_OLB",
+        "position_QB",
+        "position_RB",
+        "position_SS",
+        "position_T",
+        "position_TE",
+        "position_WR",
+    ]
+    return arr
+
+
 def create_feature_arr(data_dict: dict[str, np.ndarray]) -> np.ndarray:
     # Creating array with final fied positions and player data of players
     X = []
     n = data_dict["seq_arr"].shape[0]
-    for idx in range(n):
+    for idx in tqdm(range(n), desc="Processing data into array..."):
         # Extracting final positions of players
         seq_mask = data_dict["seq_mask_arr"][idx, :, 0, 0]
         pos_arr = data_dict["seq_arr"][idx, seq_mask, :, :][-1, :, :]
 
         # Dropping row with nan value (this is the ball)
         pos_arr = pos_arr[~np.isnan(pos_arr).any(axis=1)]
+        pos_df = pd.DataFrame(
+            pos_arr,
+            columns=data_dict["seq_cols"],
+        )
+        play_players_df = pd.DataFrame(
+            data_dict["play_players_arr"][idx, :, :],
+            columns=data_dict["play_players_cols"],
+        )
+        play_overall_df = pd.DataFrame(
+            data_dict["play_overall_arr"][idx, :, :],
+            columns=data_dict["play_overall_cols"],
+        )
+        pos_df = pos_df.merge(play_players_df, how="outer", on="nflId")
+        pos_df = pos_df.merge(play_overall_df, how="outer", on="nflId")
 
+        pos_cols = get_position_cols()
+        pos_df["position_ord"] = np.argmax(pos_df[pos_cols].to_numpy(), axis=1)
+        pos_df = pos_df.sort_values(by="position_ord")
+        pos_df = pos_df.drop(["nflId", "position_ord"], axis=1)
+        pos_arr = pos_df.to_numpy()
+
+        meta_feat = data_dict["meta_arr"][idx, :]
         feat_arr = np.concatenate((pos_arr.reshape(-1), meta_feat), axis=-1)
         X.append(feat_arr)
     X = np.stack(X)
