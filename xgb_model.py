@@ -147,6 +147,70 @@ def parameter_search(data_dir: str, route_type: str) -> None:
     return
 
 
+def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
+    if route_type not in ["short", "medium", "long", "all"]:
+        raise RuntimeError(f"Route type {route_type} not recognized!")
+
+    train_weeks = [1, 2, 3, 4, 5, 6, 7]
+    test_weeks = [8, 9]
+
+    proc = processor.SeparationDataProcessor(data_dir)
+
+    X_train, y_train = proc.process(train_weeks)
+    X_test, y_test = proc.process(test_weeks)
+
+    train_idxs = extract_route_depth(X_train, route_type)
+    X_train = X_train[train_idxs]
+    y_train = y_train[train_idxs]
+
+    test_idxs = extract_route_depth(X_test, route_type)
+    X_test = X_test[test_idxs]
+    y_test = y_test[test_idxs]
+
+    print(f"Train Samples: {X_train.shape[0]}")
+    print(f"Test Samples: {X_test.shape[0]}")
+
+    # Train/Test Split
+    bst = xgboost.XGBRegressor(
+        colsample_bytree=1,
+        reg_lambda=1.0,
+        learning_rate=0.01,
+        max_depth=7,
+        subsample=0.5,
+    )
+    bst.fit(X_train, y_train)
+    preds_train = bst.predict(X_train)
+    preds_test = bst.predict(X_test)
+    train_r2 = bst.score(X_train, y_train)
+    test_r2 = bst.score(X_test, y_test)
+
+    train_mae = sklearn.metrics.mean_absolute_error(y_train, preds_train)
+    test_mae = sklearn.metrics.mean_absolute_error(y_test, preds_test)
+
+    train_baseline = np.zeros(y_train.shape) + np.mean(y_train)
+    test_baseline = np.zeros(y_test.shape) + np.mean(y_test)
+
+    baseline_train_mae = sklearn.metrics.mean_absolute_error(
+        y_train,
+        train_baseline,
+    )
+    baseline_test_mae = sklearn.metrics.mean_absolute_error(
+        y_test,
+        test_baseline,
+    )
+
+    print("-----")
+    print(f"Baseline Train MAE: {baseline_train_mae:.3f}")
+    print(f"Train MAE: {train_mae:.3f}")
+    print(f"Train R2: {train_r2:.3f}")
+    print("")
+    print(f"Baseline Test MAE: {baseline_test_mae:.3f}")
+    print(f"Test MAE: {test_mae:.3f}")
+    print(f"Test R2: {test_r2:.3f}")
+    print("-----")
+    return bst
+
+
 def main(data_dir: str, route_type: str) -> None:
     if route_type not in ["short", "medium", "long", "all"]:
         raise RuntimeError(f"Route type {route_type} not recognized!")
@@ -154,7 +218,6 @@ def main(data_dir: str, route_type: str) -> None:
     n_splits = min(len(weeks_nums), 5)
     kf = sklearn.model_selection.KFold(n_splits=n_splits)
 
-    true_test = []
     preds_test = []
 
     for fold_idx, (train_weeks_idx, test_weeks_idx) in enumerate(kf.split(weeks_nums)):
@@ -180,14 +243,18 @@ def main(data_dir: str, route_type: str) -> None:
 
         # Train/Test Split
         bst = xgboost.XGBRegressor(
+            colsample_bytree=1,
+            reg_lambda=1.0,
             learning_rate=0.01,
             max_depth=7,
-            subsample=0.7,
-            reg_lambda=10.0,
+            subsample=0.5,
         )
         bst.fit(X_train, y_train)
         preds_train = bst.predict(X_train)
         preds_test = bst.predict(X_test)
+        train_r2 = bst.score(X_train, y_train)
+        test_r2 = bst.score(X_test, y_test)
+
         train_mae = sklearn.metrics.mean_absolute_error(y_train, preds_train)
         test_mae = sklearn.metrics.mean_absolute_error(y_test, preds_test)
 
@@ -204,11 +271,13 @@ def main(data_dir: str, route_type: str) -> None:
         )
 
         print("-----")
-        print(f"Baseline Train Accuracy: {baseline_train_mae:.3f}")
+        print(f"Baseline Train MAE: {baseline_train_mae:.3f}")
         print(f"Fold {fold_idx} Train MAE: {train_mae:.3f}")
+        print(f"Fold {fold_idx} Train R2: {train_r2:.3f}")
         print("")
-        print(f"Baseline Test Accuracy: {baseline_test_mae:.3f}")
+        print(f"Baseline Test MAE: {baseline_test_mae:.3f}")
         print(f"Fold {fold_idx} Test MAE: {test_mae:.3f}")
+        print(f"Fold {fold_idx} Test R2: {test_r2:.3f}")
         print("-----")
     return
 
@@ -216,7 +285,8 @@ def main(data_dir: str, route_type: str) -> None:
 if __name__ == "__main__":
     Fire(
         {
-            "xgb": main,
+            "cv": main,
+            "train": train_model,
             "param_search": parameter_search,
         }
     )
