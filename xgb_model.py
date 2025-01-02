@@ -8,13 +8,14 @@ import xgboost
 import processor
 
 
-def create_feature_arr(seq_features, seq_mask, meta_features) -> np.ndarray:
+def create_feature_arr(data_dict: dict[str, np.ndarray]) -> np.ndarray:
     # Creating array with final fied positions and player data of players
     X = []
-    for pos_feat, mask, meta_feat in zip(seq_features, seq_mask, meta_features):
+    n = data_dict["seq_arr"].shape[0]
+    for idx in range(n):
         # Extracting final positions of players
-        seq_mask = mask[:, 0, 0]
-        pos_arr = pos_feat[seq_mask, :, :][-1, :, :]
+        seq_mask = data_dict["seq_mask_arr"][idx, :, 0, 0]
+        pos_arr = data_dict["seq_arr"][idx, seq_mask, :, :][-1, :, :]
 
         # Dropping row with nan value (this is the ball)
         pos_arr = pos_arr[~np.isnan(pos_arr).any(axis=1)]
@@ -137,26 +138,13 @@ def main(data_dir: str) -> None:
         proc = processor.SeparationDataProcessor(data_dir)
 
         print(f"Fold {fold_idx} Loading Data....")
-        seq_features_train, seq_mask_train, meta_features_train, sep_train = (
-            proc.process(
-                train_weeks,
-            )
-        )
-        X_train = create_feature_arr(
-            seq_features_train,
-            seq_mask_train,
-            meta_features_train,
-        )
-        y_train = sep_train
-        seq_features_test, seq_mask_test, meta_features_test, sep_test = proc.process(
-            test_weeks,
-        )
-        X_test = create_feature_arr(
-            seq_features_test,
-            seq_mask_test,
-            meta_features_test,
-        )
-        y_test = sep_test
+        train_dict = proc.process(train_weeks)
+        X_train = create_feature_arr(train_dict)
+        y_train = train_dict["label_arr"]
+
+        test_dict = proc.process(test_weeks)
+        X_test = create_feature_arr(test_dict)
+        y_test = test_dict["label_arr"]
 
         # Train/Test Split
         bst = xgboost.XGBRegressor(

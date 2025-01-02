@@ -8,9 +8,76 @@ import pandas as pd
 #      return arr
 
 
+def get_play_players_columns() -> list[str]:
+    cols = [
+        "nflId",
+        "height",
+        "weight",
+        "position_C",
+        "position_CB",
+        "position_DB",
+        "position_DE",
+        "position_DT",
+        "position_FB",
+        "position_FS",
+        "position_G",
+        "position_ILB",
+        "position_LB",
+        "position_MLB",
+        "position_NT",
+        "position_OLB",
+        "position_QB",
+        "position_RB",
+        "position_SS",
+        "position_T",
+        "position_TE",
+        "position_WR",
+    ]
+    return cols
+
+
+def get_play_overall_columns() -> list[str]:
+    cols = [
+        "nflId",
+        "routeRan_ANGLE",
+        "routeRan_CORNER",
+        "routeRan_CROSS",
+        "routeRan_FLAT",
+        "routeRan_GO",
+        "routeRan_HITCH",
+        "routeRan_IN",
+        "routeRan_OUT",
+        "routeRan_POST",
+        "routeRan_SCREEN",
+        "routeRan_SLANT",
+        "routeRan_WHEEL",
+        "pff_defensiveCoverageAssignment_2L",
+        "pff_defensiveCoverageAssignment_2R",
+        "pff_defensiveCoverageAssignment_3L",
+        "pff_defensiveCoverageAssignment_3M",
+        "pff_defensiveCoverageAssignment_3R",
+        "pff_defensiveCoverageAssignment_4IL",
+        "pff_defensiveCoverageAssignment_4IR",
+        "pff_defensiveCoverageAssignment_4OL",
+        "pff_defensiveCoverageAssignment_4OR",
+        "pff_defensiveCoverageAssignment_CFL",
+        "pff_defensiveCoverageAssignment_CFR",
+        "pff_defensiveCoverageAssignment_DF",
+        "pff_defensiveCoverageAssignment_FL",
+        "pff_defensiveCoverageAssignment_FR",
+        "pff_defensiveCoverageAssignment_HCL",
+        "pff_defensiveCoverageAssignment_HCR",
+        "pff_defensiveCoverageAssignment_HOL",
+        "pff_defensiveCoverageAssignment_MAN",
+        "pff_defensiveCoverageAssignment_PRE",
+        "maxDist",
+    ]
+    return cols
+
+
 def get_seq_feature_columns() -> list[str]:
     arr = [
-        #  "playDirection", # TODO
+        "nflId",
         "x",
         "y",
         "s",
@@ -51,59 +118,8 @@ def get_seq_feature_columns() -> list[str]:
         "club_TEN",
         "club_WAS",
         "club_football",
-        "height",
-        "weight",
-        "position_C",
-        "position_CB",
-        "position_DB",
-        "position_DE",
-        "position_DT",
-        "position_FB",
-        "position_FS",
-        "position_G",
-        "position_ILB",
-        "position_LB",
-        "position_MLB",
-        "position_NT",
-        "position_OLB",
-        "position_QB",
-        "position_RB",
-        "position_SS",
-        "position_T",
-        "position_TE",
-        "position_WR",
-        "routeRan_ANGLE",
-        "routeRan_CORNER",
-        "routeRan_CROSS",
-        "routeRan_FLAT",
-        "routeRan_GO",
-        "routeRan_HITCH",
-        "routeRan_IN",
-        "routeRan_OUT",
-        "routeRan_POST",
-        "routeRan_SCREEN",
-        "routeRan_SLANT",
-        "routeRan_WHEEL",
-        "pff_defensiveCoverageAssignment_2L",
-        "pff_defensiveCoverageAssignment_2R",
-        "pff_defensiveCoverageAssignment_3L",
-        "pff_defensiveCoverageAssignment_3M",
-        "pff_defensiveCoverageAssignment_3R",
-        "pff_defensiveCoverageAssignment_4IL",
-        "pff_defensiveCoverageAssignment_4IR",
-        "pff_defensiveCoverageAssignment_4OL",
-        "pff_defensiveCoverageAssignment_4OR",
-        "pff_defensiveCoverageAssignment_CFL",
-        "pff_defensiveCoverageAssignment_CFR",
-        "pff_defensiveCoverageAssignment_DF",
-        "pff_defensiveCoverageAssignment_FL",
-        "pff_defensiveCoverageAssignment_FR",
-        "pff_defensiveCoverageAssignment_HCL",
-        "pff_defensiveCoverageAssignment_HCR",
-        "pff_defensiveCoverageAssignment_HOL",
-        "pff_defensiveCoverageAssignment_MAN",
-        "pff_defensiveCoverageAssignment_PRE",
-        "maxDist",
+        "playDirection_left",
+        "playDirection_right",
     ]
     return arr
 
@@ -118,7 +134,7 @@ def get_meta_feature_columns() -> list[str]:
         "preSnapHomeTeamWinProbability",
         "preSnapVisitorTeamWinProbability",
         "expectedPoints",
-        "playClockAtSnap",
+        "playClockAtSnap",  # TODO: change?
         "passLength",
         "playAction",
         "dropbackDistance",
@@ -256,7 +272,7 @@ def convert_game_to_pct(row: pd.Series) -> float:
     return pct_elapsed
 
 
-def extract_meta_features(meta_features: pd.DataFrame):
+def extract_meta_features(meta_features: pd.DataFrame) -> np.ndarray:
     t_feat = meta_features[["quarter", "gameClock"]]
     pct_elapsed = t_feat.apply(convert_game_to_pct, axis=1)
 
@@ -267,17 +283,36 @@ def extract_meta_features(meta_features: pd.DataFrame):
     return meta_arr
 
 
-#  def extract_player_play_features(player_play: list[pd.DataFrame]) -> np.ndarray:
-#      cols = get_player_feature_columns()
-#      arr = [x[cols].to_numpy() for x in player_play]
-#      arr = np.stack(arr, axis=0)
-#      return arr
+def get_full_meta_feature_cols() -> list[str]:
+    cols = get_meta_feature_columns()
+    cols.append("pct_elapsed")
+    return cols
 
 
-def convert_frame_to_array(frame: pd.DataFrame) -> np.ndarray:
-    oh_cols = [x for x in frame.columns if "onehot" in x]
-    float_cols = [x for x in frame.columns if "onehot" not in x]
-    pass
+def extract_play_players_features(
+    play_player_features: list[pd.DataFrame],
+) -> np.ndarray:
+    cols = get_play_players_columns()
+    arr = [x[cols].to_numpy().astype(float) for x in play_player_features]
+    arr = np.stack(arr)
+    return arr
+
+
+def extract_play_overall_features(
+    play_overall_features: list[pd.DataFrame],
+) -> np.ndarray:
+    cols = get_play_overall_columns()
+    arr = [x[cols].to_numpy().astype(float) for x in play_overall_features]
+    arr = np.stack(arr)
+    return arr
+
+
+def add_cols(data: pd.DataFrame, add_cols: list[str]) -> pd.DataFrame:
+    for c in add_cols:
+        if "club" not in c:
+            raise RuntimeError("Unexpected column type passed to add_cols!")
+    data.loc[:, add_cols] = np.zeros((data.shape[0], len(add_cols)))
+    return data
 
 
 def extract_seq_arr(
@@ -292,9 +327,11 @@ def extract_seq_arr(
         frame_data = [
             seq_feature[seq_feature["frameId"] == frame_id] for frame_id in frames
         ]
-        frame_data = [x.sort_values(by=["position"]) for x in frame_data]
 
-        #  stacked_frames = np.stack([x[cols].to_numpy() for x in frame_data], axis=0)
+        cols_complement = list(set(cols) - set(frame_data[0].keys()))
+        if len(cols_complement) > 0:
+            frame_data = [add_cols(x, cols_complement) for x in frame_data]
+
         stacked_frames = np.stack([x[cols] for x in frame_data], axis=0)
         mask = np.ones(stacked_frames.shape)
 
@@ -316,9 +353,6 @@ def player_height_in(x: str) -> float:
 
 
 class DataFeaturizer:
-    def __init__(self):
-        self.encoder = sklearn.preprocessing.OneHotEncoder()
-
     def featurize_week(self, week_data: pd.DataFrame) -> pd.DataFrame:
         week_data["o"] = week_data["o"] / 360.0
 

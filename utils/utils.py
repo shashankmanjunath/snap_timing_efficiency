@@ -65,15 +65,21 @@ def get_player_play_data(
     play_player_data = player_data[game_loc & play_loc]
 
     after_snap = play_seq_data[play_seq_data["frameType"] == "AFTER_SNAP"]
-    pass_arrival_frame = (
-        get_pass_arrival_time_data(play_seq_data)["frameId"].unique().item()
-    )
+    pass_arrival_frame = get_pass_arrival_time_data(play_seq_data)["frameId"].unique()
+    pass_arrival_frame = pass_arrival_frame.min().item()
+
     post_snap = after_snap[after_snap["frameId"] <= pass_arrival_frame]
     post_snap = post_snap.sort_values(by="frameId")
 
-    snap_data = play_seq_data[play_seq_data["event"] == "ball_snap"]
+    event_1 = play_seq_data["event"] == "ball_snap"
+    event_2 = play_seq_data["event"] == "snap_direct"
+    event_3 = play_seq_data["event"] == "autoevent_ballsnap"
+    snap_data = play_seq_data[event_1 | event_2 | event_3]
     ball_data = snap_data[snap_data["displayName"] == "football"]
-    ball_pos = ball_data["y"].item()
+    if ball_data.shape[0] > 1:
+        ball_pos = ball_data["y"].iloc[0].item()
+    else:
+        ball_pos = ball_data["y"].item()
 
     player_ids = post_snap["nflId"].dropna().unique()
     max_dist = [
@@ -161,7 +167,7 @@ def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
     weeks_data = {}
 
     for week in tqdm(range(1, 10), desc="Loading Weeks data"):
-        if week not in [1, 2]:
+        if week > 3:
             continue
         week_fname = f"tracking_week_{week}.csv"
         week_path = os.path.join(data_dir, week_fname)
