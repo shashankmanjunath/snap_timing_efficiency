@@ -57,27 +57,40 @@ def create_feature_arr(f: h5py.File) -> np.ndarray:
             pos_arr,
             columns=decode(f["seq_cols"]),
         )
+        pos_df["nflId"] = pos_df["nflId"].astype(int)
         play_players_df = pd.DataFrame(
             f["play_players_arr"][idx, :, :],
             columns=decode(f["play_players_cols"]),
         )
+        play_players_df["nflId"] = play_players_df["nflId"].astype(int)
         play_overall_df = pd.DataFrame(
             f["play_overall_arr"][idx, :, :],
             columns=decode(f["play_overall_cols"]),
         )
+        play_overall_df["nflId"] = play_overall_df["nflId"].astype(int)
+
         pos_df = pos_df.merge(play_players_df, how="outer", on="nflId")
-        pos_df = pos_df.merge(play_overall_df, how="outer", on="nflId")
+        pos_df = pos_df.merge(
+            play_overall_df, how="outer", on=["gameId", "playId", "nflId"]
+        )
 
         pos_cols = get_position_cols()
         pos_df["position_ord"] = np.argmax(pos_df[pos_cols].to_numpy(), axis=1)
         pos_df = pos_df.sort_values(by="position_ord")
-        pos_df = pos_df.drop(["nflId", "position_ord"], axis=1)
-        pos_arr = pos_df.to_numpy()
+        pos_df = pos_df[pos_df["wasTargettedReceiver"] == 1.0]
+        #  pos_arr = pos_df.to_numpy()
 
-        meta_feat = f["meta_arr"][idx, :]
-        feat_arr = np.concatenate((pos_arr.reshape(-1), meta_feat), axis=-1)
-        X.append(feat_arr)
-    X = np.stack(X)
+        meta_df = pd.DataFrame(
+            f["meta_arr"][idx, :].reshape(1, -1),
+            columns=decode(f["meta_cols"]),
+        )
+        pos_df = pos_df.merge(meta_df, how="outer", on=["gameId", "playId"])
+        pos_df = pos_df.drop(
+            ["gameId", "playId", "nflId", "frameId", "position_ord"], axis=1
+        )
+        #  feat_arr = np.concatenate((pos_arr.reshape(-1), meta_feat), axis=-1)
+        X.append(pos_df)
+    X = pd.concat(X, axis=0).reset_index(drop=True)
     return X
 
 
@@ -119,72 +132,15 @@ def parameter_search(data_dir: str) -> None:
     return
 
 
-def lr_model(data_dir: str) -> None:
-    weeks_nums = [x for x in range(1, 3)]
-    n_splits = min(len(weeks_nums), 5)
-    kf = sklearn.model_selection.KFold(n_splits=n_splits)
-
-    for fold_idx, (train_weeks_idx, test_weeks_idx) in enumerate(kf.split(weeks_nums)):
-        train_weeks = [weeks_nums[idx] for idx in train_weeks_idx]
-        test_weeks = [weeks_nums[idx] for idx in test_weeks_idx]
-
-        proc = processor.SeparationDataProcessor(data_dir)
-
-        print(f"Fold {fold_idx} Loading Data....")
-        seq_features_train, seq_mask_train, meta_features_train, sep_train = (
-            proc.process(
-                train_weeks,
-            )
-        )
-        X_train = create_feature_arr(
-            seq_features_train,
-            seq_mask_train,
-            meta_features_train,
-        )
-        y_train = sep_train
-        seq_features_test, seq_mask_test, meta_features_test, sep_test = proc.process(
-            test_weeks,
-        )
-        X_test = create_feature_arr(
-            seq_features_test,
-            seq_mask_test,
-            meta_features_test,
-        )
-        y_test = sep_test
-
-        # Train/Test Split
-        lr = sklearn.linear_model.LinearRegression()
-        lr.fit(X_train, y_train)
-        preds_train = lr.predict(X_train)
-        preds_test = lr.predict(X_test)
-        train_mae = sklearn.metrics.mean_absolute_error(y_train, preds_train)
-        test_mae = sklearn.metrics.mean_absolute_error(y_test, preds_test)
-
-        train_baseline = np.zeros(y_train.shape) + np.mean(y_train)
-        test_baseline = np.zeros(y_test.shape) + np.mean(y_test)
-
-        baseline_train_mae = sklearn.metrics.mean_absolute_error(
-            y_train,
-            train_baseline,
-        )
-        baseline_test_mae = sklearn.metrics.mean_absolute_error(
-            y_test,
-            test_baseline,
-        )
-
-        print("-----")
-        print(f"Baseline Train Accuracy: {baseline_train_mae:.3f}")
-        print(f"Fold {fold_idx} Train MAE: {train_mae:.3f}")
-        print("")
-        print(f"Baseline Test Accuracy: {baseline_test_mae:.3f}")
-        print(f"Fold {fold_idx} Test MAE: {test_mae:.3f}")
-        print("-----")
-
-
-def main(data_dir: str) -> None:
+def main(data_dir: str, route_type: str) -> None:
+    if route_type not in ["short", "medium", "long", "all"]:
+        raise RuntimeError(f"Route type {route_type} not recognized!")
     weeks_nums = [x for x in range(1, 10)]
     n_splits = min(len(weeks_nums), 5)
     kf = sklearn.model_selection.KFold(n_splits=n_splits)
+
+    true_test = []
+    preds_test = []
 
     for fold_idx, (train_weeks_idx, test_weeks_idx) in enumerate(kf.split(weeks_nums)):
         train_weeks = [weeks_nums[idx] for idx in train_weeks_idx]
@@ -195,6 +151,28 @@ def main(data_dir: str) -> None:
         print(f"Fold {fold_idx} Loading Data....")
         X_train, y_train = proc.process(train_weeks)
         X_test, y_test = proc.process(test_weeks)
+
+        if route_type == "short":
+            # Short passes only
+            train_idxs = X_train["passLength"] <= 5.0
+            test_idxs = X_test["passLength"] <= 5.0
+        elif route_type == "medium":
+            train_idxs = (X_train["passLength"] > 5.0) & (X_train["passLength"] <= 15.0)
+            test_idxs = (X_test["passLength"] > 5.0) & (X_test["passLength"] <= 15.0)
+        elif route_type == "long":
+            train_idxs = X_train["passLength"] <= 5.0
+            test_idxs = X_test["passLength"] <= 5.0
+        elif route_type == "all":
+            train_idxs = [True] * X_train.shape[0]
+            test_idxs = [True] * X_test.shape[0]
+        else:
+            raise RuntimeError(f"Route type {route_type} not recognized!")
+
+        X_train = X_train[train_idxs]
+        y_train = y_train[train_idxs]
+
+        X_test = X_test[test_idxs]
+        y_test = y_test[test_idxs]
 
         print(f"Train Samples: {X_train.shape[0]}")
         print(f"Test Samples: {X_test.shape[0]}")
@@ -224,7 +202,6 @@ def main(data_dir: str) -> None:
             test_baseline,
         )
 
-        # TODO: Print baseline MAE if we predict the average value of labels
         print("-----")
         print(f"Baseline Train Accuracy: {baseline_train_mae:.3f}")
         print(f"Fold {fold_idx} Train MAE: {train_mae:.3f}")

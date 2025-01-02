@@ -24,7 +24,7 @@ class SeparationDataProcessor:
         self.force_proc = force_proc
         self.save = save
 
-        self.cache_file_fname = os.path.join(data_dir, "cache_dataset_2.hdf5")
+        self.cache_file_fname = os.path.join(data_dir, "cache_dataset.hdf5")
 
         # Setting sampling rate
         self.samp_rate = 10.0
@@ -52,7 +52,7 @@ class SeparationDataProcessor:
     def load_data(
         self,
         weeks: list[int],
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[pd.DataFrame, np.ndarray]:
         #  seq_arr = []
         #  seq_mask_arr = []
         #  meta_arr = []
@@ -68,7 +68,7 @@ class SeparationDataProcessor:
                 X.append(feat_arr_week)
                 label_arr.append(f[week_key]["separation_arr"][()])
 
-        X = np.concatenate(X, axis=0)
+        X = pd.concat(X, axis=0)
         y = np.concatenate(label_arr, axis=0)
         t_load = time.time() - t1
         print(f"Cache load time: {t_load:.3f}")
@@ -82,7 +82,7 @@ class SeparationDataProcessor:
 
         weeks_data = utils.load_weeks_data(self.data_dir)
         pass_plays = utils.get_pass_plays(player_play_data, play_data)
-        play_ids = pass_plays[["gameId", "playId", "target_receiver_id"]]
+        #  play_ids = pass_plays[["gameId", "playId", "target_receiver_id"]]
 
         featurizer = processor.DataFeaturizer()
         feat_play_data = featurizer.featurize_play(play_data)
@@ -105,18 +105,22 @@ class SeparationDataProcessor:
             before_snap_mismatch = 0
 
             # Sub-selecting only valid data for faster search later
-            game_loc = week_data["gameId"].isin(play_ids["gameId"])
-            play_loc = week_data["playId"].isin(play_ids["playId"])
+            game_loc = week_data["gameId"].isin(pass_plays["gameId"])
+            play_loc = week_data["playId"].isin(pass_plays["playId"])
             week_data = week_data[game_loc & play_loc]
 
             # Iterating throw plays
-            n_rows = play_ids.shape[0]
+            n_rows = pass_plays.shape[0]
             pbar = tqdm(
-                play_ids.iterrows(),
+                pass_plays.iterrows(),
                 total=n_rows,
                 desc=f"Processing Week {week_num}",
             )
-            for idx, (gameId, playId, nflId) in pbar:
+            for idx, row in pbar:
+                gameId = row["gameId"]
+                playId = row["playId"]
+                nflId = row["target_receiver_id"]
+
                 # Getting time-series sequence data from plays
                 week_play_data = utils.get_play_sequence(week_data, gameId, playId)
 
@@ -135,7 +139,12 @@ class SeparationDataProcessor:
 
                 play_player_ids = week_play_data["nflId"].dropna().unique()
                 play_players = player_data[player_data["nflId"].isin(play_player_ids)]
+                play_players = play_players.copy()
 
+                n = play_players.shape[0]
+                play_players.loc[:, "wasTargettedReceiver"] = np.zeros(n)
+                id_loc = play_players["nflId"] == nflId
+                play_players.loc[id_loc, "wasTargettedReceiver"] = 1
                 if meta_play_data["passTippedAtLine"].item():
                     continue
 
@@ -213,6 +222,7 @@ class SeparationDataProcessor:
                 play_overall_features,
             )
             play_overall_cols = processor.get_play_overall_columns()
+            label = np.asarray(label)
             t_featurize = time.time() - t1
             print(f"Done! Runtime: {t_featurize:.3f}")
 
@@ -221,14 +231,18 @@ class SeparationDataProcessor:
                 t2 = time.time()
                 with h5py.File(self.cache_file_fname, "a") as f:
                     f[f"week_{week_num}/separation_arr"] = label
-                    f[f"week_{week_num}/meta_arr"] = meta_arr.astype(float)
+                    f[f"week_{week_num}/meta_arr"] = meta_arr.astype(np.float32)
                     f[f"week_{week_num}/meta_cols"] = meta_cols
-                    f[f"week_{week_num}/seq_arr"] = seq_arr.astype(float)
-                    f[f"week_{week_num}/seq_mask"] = seq_mask
+                    f[f"week_{week_num}/seq_arr"] = seq_arr.astype(np.float32)
+                    f[f"week_{week_num}/seq_mask"] = seq_mask.astype(bool)
                     f[f"week_{week_num}/seq_cols"] = seq_cols
-                    f[f"week_{week_num}/play_players_arr"] = play_players_arr
+                    f[f"week_{week_num}/play_players_arr"] = play_players_arr.astype(
+                        np.float32
+                    )
                     f[f"week_{week_num}/play_players_cols"] = play_players_cols
-                    f[f"week_{week_num}/play_overall_arr"] = play_overall_arr
+                    f[f"week_{week_num}/play_overall_arr"] = play_overall_arr.astype(
+                        np.float32
+                    )
                     f[f"week_{week_num}/play_overall_cols"] = play_overall_cols
                 t_save = time.time() - t2
                 print(f"Data saved! Saving time: {t_save:.3f}")

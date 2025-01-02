@@ -1,4 +1,3 @@
-import sklearn.preprocessing
 import numpy as np
 import pandas as pd
 
@@ -32,13 +31,16 @@ def get_play_players_columns() -> list[str]:
         "position_T",
         "position_TE",
         "position_WR",
+        "wasTargettedReceiver",
     ]
     return cols
 
 
 def get_play_overall_columns() -> list[str]:
     cols = [
+        "gameId",
         "nflId",
+        "playId",
         "routeRan_ANGLE",
         "routeRan_CORNER",
         "routeRan_CROSS",
@@ -77,7 +79,10 @@ def get_play_overall_columns() -> list[str]:
 
 def get_seq_feature_columns() -> list[str]:
     arr = [
+        "gameId",
         "nflId",
+        "playId",
+        "frameId",
         "x",
         "y",
         "s",
@@ -126,6 +131,8 @@ def get_seq_feature_columns() -> list[str]:
 
 def get_meta_feature_columns() -> list[str]:
     arr = [
+        "gameId",
+        "playId",
         "down",
         "yardsToGo",
         "preSnapHomeScore",
@@ -133,7 +140,6 @@ def get_meta_feature_columns() -> list[str]:
         "absoluteYardlineNumber",
         "preSnapHomeTeamWinProbability",
         "preSnapVisitorTeamWinProbability",
-        "expectedPoints",
         "playClockAtSnap",  # TODO: change?
         "passLength",
         "playAction",
