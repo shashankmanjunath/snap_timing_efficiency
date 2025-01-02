@@ -40,6 +40,23 @@ def decode(arr: list) -> list[str]:
     return [x.decode("utf-8") for x in arr]
 
 
+def extract_route_depth(
+    feat_df: pd.DataFrame,
+    route_type: str,
+) -> list[bool]:
+    if route_type == "short":
+        feat_idxs = feat_df["passLength"] <= 5.0
+    elif route_type == "medium":
+        feat_idxs = (feat_df["passLength"] > 5.0) & (feat_df["passLength"] <= 15.0)
+    elif route_type == "long":
+        feat_idxs = feat_df["passLength"] <= 5.0
+    elif route_type == "all":
+        feat_idxs = [True] * feat_df.shape[0]
+    else:
+        raise RuntimeError(f"Route type {route_type} not recognized!")
+    return feat_idxs
+
+
 def create_feature_arr(f: h5py.File) -> np.ndarray:
     # Creating array with final fied positions and player data of players
     X = []
@@ -94,25 +111,23 @@ def create_feature_arr(f: h5py.File) -> np.ndarray:
     return X
 
 
-def parameter_search(data_dir: str) -> None:
-    #  train_weeks = [1, 2, 3, 4, 5, 6, 7]
-    train_weeks = [1, 2]
+def parameter_search(data_dir: str, route_type: str) -> None:
+    if route_type not in ["short", "medium", "long", "all"]:
+        raise RuntimeError(f"Route type {route_type} not recognized!")
+
+    train_weeks = [1, 2, 3, 4, 5, 6, 7]
     proc = processor.SeparationDataProcessor(data_dir)
-    seq_features_train, seq_mask_train, meta_features_train, sep_train = proc.process(
-        train_weeks,
-    )
-    X_train = create_feature_arr(
-        seq_features_train,
-        seq_mask_train,
-        meta_features_train,
-    )
-    y_train = sep_train
+    X_train, y_train = proc.process(train_weeks)
+
+    train_idxs = extract_route_depth(X_train, route_type)
+    X_train = X_train[train_idxs]
+    y_train = y_train[train_idxs]
 
     param_grid = {
         "max_depth": [3, 5, 7],
         "learning_rate": [0.01],
         "subsample": [0.5, 0.7, 1],
-        #  "colsample_bytree": [0.5, 0.7, 1],
+        "colsample_bytree": [0.5, 0.7, 1],
         "lambda": [0.1, 1.0, 10.0],
     }
 
@@ -152,25 +167,11 @@ def main(data_dir: str, route_type: str) -> None:
         X_train, y_train = proc.process(train_weeks)
         X_test, y_test = proc.process(test_weeks)
 
-        if route_type == "short":
-            # Short passes only
-            train_idxs = X_train["passLength"] <= 5.0
-            test_idxs = X_test["passLength"] <= 5.0
-        elif route_type == "medium":
-            train_idxs = (X_train["passLength"] > 5.0) & (X_train["passLength"] <= 15.0)
-            test_idxs = (X_test["passLength"] > 5.0) & (X_test["passLength"] <= 15.0)
-        elif route_type == "long":
-            train_idxs = X_train["passLength"] <= 5.0
-            test_idxs = X_test["passLength"] <= 5.0
-        elif route_type == "all":
-            train_idxs = [True] * X_train.shape[0]
-            test_idxs = [True] * X_test.shape[0]
-        else:
-            raise RuntimeError(f"Route type {route_type} not recognized!")
-
+        train_idxs = extract_route_depth(X_train, route_type)
         X_train = X_train[train_idxs]
         y_train = y_train[train_idxs]
 
+        test_idxs = extract_route_depth(X_test, route_type)
         X_test = X_test[test_idxs]
         y_test = y_test[test_idxs]
 
@@ -216,7 +217,6 @@ if __name__ == "__main__":
     Fire(
         {
             "xgb": main,
-            "lr": lr_model,
             "param_search": parameter_search,
         }
     )
