@@ -35,6 +35,9 @@ class SeparationDataProcessor:
         # Getting the max sequence length
         self.max_seq_len = int(self.samp_rate * self.max_seq_time)
 
+        # cache of loaded data
+        self.load_cache = {}
+
     def process(self, weeks: list[int]) -> tuple[np.ndarray, np.ndarray]:
         if not self.check_saved_cache():
             self.calc_features()
@@ -53,18 +56,17 @@ class SeparationDataProcessor:
         self,
         weeks: list[int],
     ) -> tuple[pd.DataFrame, np.ndarray]:
-        #  seq_arr = []
-        #  seq_mask_arr = []
-        #  meta_arr = []
-        #  play_players_arr = []
-        #  play_overall_arr = []
         X = []
         label_arr = []
         t1 = time.time()
         with h5py.File(self.cache_file_fname, "r") as f:
             for week in weeks:
                 week_key = f"week_{week}"
-                feat_arr_week = xgb_model.create_feature_arr(f[week_key])
+                if week_key in self.load_cache:
+                    feat_arr_week = self.load_cache[week_key]
+                else:
+                    feat_arr_week = xgb_model.create_feature_arr(f[week_key])
+                    self.load_cache[week_key] = feat_arr_week
                 X.append(feat_arr_week)
                 label_arr.append(f[week_key]["separation_arr"][()])
 
@@ -90,8 +92,6 @@ class SeparationDataProcessor:
         player_data = featurizer.featurize_player_data(player_data)
 
         for week_num in range(1, 10):
-            #  if week_num > 3:
-            #      continue
             play_players_features = []
             play_overall_features = []
             seq_features = []
@@ -100,6 +100,7 @@ class SeparationDataProcessor:
 
             week_data = weeks_data[week_num]
             week_data = featurizer.featurize_week(week_data)
+            no_pass_event_count = 0
             no_pass_arrival_count = 0
             no_line_set_count = 0
             before_snap_mismatch = 0
@@ -173,9 +174,12 @@ class SeparationDataProcessor:
                     playId,
                 )
 
+                if play_overall_data.shape[0] == 0:
+                    no_pass_event_count += 1
+                    continue
+
                 num_routes = play_overall_data["wasRunningRoute"].sum().item()
                 meta_play_data["numRoutes"] = num_routes
-                pass
 
                 # FEATURES:
                 #  1. Features that account for quarterback arm strength
@@ -212,6 +216,7 @@ class SeparationDataProcessor:
                 #      break
 
             print(f"No line set failures: {no_line_set_count}")
+            print(f"No pass event count: {no_pass_event_count}")
             print(f"No pass arrival count: {no_pass_arrival_count}")
             print(f"Mismatched pre-snap labeling count: {before_snap_mismatch}")
 

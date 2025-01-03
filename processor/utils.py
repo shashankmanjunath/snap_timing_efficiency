@@ -38,9 +38,14 @@ def get_play_players_columns() -> list[str]:
 
 def get_play_overall_columns() -> list[str]:
     cols = [
+        # --- TO DROP, KEPT FOR LABELING ---
         "gameId",
         "nflId",
         "playId",
+        "inMotionAtBallSnap",
+        "shiftSinceLineset",
+        "motionSinceLineset",
+        # ----------------------------------
         "routeRan_ANGLE",
         "routeRan_CORNER",
         "routeRan_CROSS",

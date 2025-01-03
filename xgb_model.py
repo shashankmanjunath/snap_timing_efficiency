@@ -1,3 +1,5 @@
+import pickle
+
 from fire import Fire
 from tqdm import tqdm
 
@@ -9,6 +11,7 @@ import xgboost
 import h5py
 
 import processor
+import utils
 
 
 def get_position_cols() -> list[str]:
@@ -40,6 +43,10 @@ def decode(arr: list) -> list[str]:
     return [x.decode("utf-8") for x in arr]
 
 
+def get_route_types() -> list[str]:
+    return ["positive", "short", "medium", "long", "all"]
+
+
 def extract_route_depth(
     feat_df: pd.DataFrame,
     route_type: str,
@@ -52,6 +59,8 @@ def extract_route_depth(
         feat_idxs = feat_df["passLength"] <= 5.0
     elif route_type == "all":
         feat_idxs = [True] * feat_df.shape[0]
+    elif route_type == "positive":
+        feat_idxs = feat_df["passLength"] >= 0.0
     else:
         raise RuntimeError(f"Route type {route_type} not recognized!")
     return feat_idxs
@@ -103,16 +112,25 @@ def create_feature_arr(f: h5py.File) -> np.ndarray:
         )
         pos_df = pos_df.merge(meta_df, how="outer", on=["gameId", "playId"])
         pos_df = pos_df.drop(
-            ["gameId", "playId", "nflId", "frameId", "position_ord"], axis=1
+            [
+                "gameId",
+                "playId",
+                "nflId",
+                "frameId",
+                "position_ord",
+                "inMotionAtBallSnap",
+                "shiftSinceLineset",
+                "motionSinceLineset",
+            ],
+            axis=1,
         )
-        #  feat_arr = np.concatenate((pos_arr.reshape(-1), meta_feat), axis=-1)
         X.append(pos_df)
     X = pd.concat(X, axis=0).reset_index(drop=True)
     return X
 
 
 def parameter_search(data_dir: str, route_type: str) -> None:
-    if route_type not in ["short", "medium", "long", "all"]:
+    if route_type not in get_route_types():
         raise RuntimeError(f"Route type {route_type} not recognized!")
 
     train_weeks = [1, 2, 3, 4, 5, 6, 7]
@@ -124,11 +142,10 @@ def parameter_search(data_dir: str, route_type: str) -> None:
     y_train = y_train[train_idxs]
 
     param_grid = {
-        "max_depth": [3, 5, 7],
+        "max_depth": [3, 5, 7, 15, 25],
         "learning_rate": [0.01],
         "subsample": [0.5, 0.7, 1],
         "colsample_bytree": [0.5, 0.7, 1],
-        "lambda": [0.1, 1.0, 10.0],
     }
 
     xgb_model = xgboost.XGBRegressor()
@@ -148,7 +165,7 @@ def parameter_search(data_dir: str, route_type: str) -> None:
 
 
 def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
-    if route_type not in ["short", "medium", "long", "all"]:
+    if route_type not in get_route_types():
         raise RuntimeError(f"Route type {route_type} not recognized!")
 
     train_weeks = [1, 2, 3, 4, 5, 6, 7]
@@ -175,7 +192,7 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
         colsample_bytree=1,
         reg_lambda=1.0,
         learning_rate=0.01,
-        max_depth=7,
+        max_depth=25,
         subsample=0.5,
     )
     bst.fit(X_train, y_train)
@@ -208,23 +225,29 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
     print(f"Test MAE: {test_mae:.3f}")
     print(f"Test R2: {test_r2:.3f}")
     print("-----")
-    return bst
+
+    xgb_fname = f"xgb_model_{route_type}.pkl"
+    print(f"Saving model to {xgb_fname}...")
+
+    with open(xgb_fname, "wb") as f:
+        pickle.dump(bst, f)
 
 
 def main(data_dir: str, route_type: str) -> None:
-    if route_type not in ["short", "medium", "long", "all"]:
+    if route_type not in get_route_types():
         raise RuntimeError(f"Route type {route_type} not recognized!")
     weeks_nums = [x for x in range(1, 10)]
     n_splits = min(len(weeks_nums), 5)
     kf = sklearn.model_selection.KFold(n_splits=n_splits)
 
-    preds_test = []
+    cv_test_mae = []
+    cv_test_r2 = []
+
+    proc = processor.SeparationDataProcessor(data_dir)
 
     for fold_idx, (train_weeks_idx, test_weeks_idx) in enumerate(kf.split(weeks_nums)):
         train_weeks = [weeks_nums[idx] for idx in train_weeks_idx]
         test_weeks = [weeks_nums[idx] for idx in test_weeks_idx]
-
-        proc = processor.SeparationDataProcessor(data_dir)
 
         print(f"Fold {fold_idx} Loading Data....")
         X_train, y_train = proc.process(train_weeks)
@@ -238,17 +261,36 @@ def main(data_dir: str, route_type: str) -> None:
         X_test = X_test[test_idxs]
         y_test = y_test[test_idxs]
 
+        X_train = X_train[utils.get_target_feature_cols()]
+        X_test = X_test[utils.get_target_feature_cols()]
         print(f"Train Samples: {X_train.shape[0]}")
         print(f"Test Samples: {X_test.shape[0]}")
 
         # Train/Test Split
-        bst = xgboost.XGBRegressor(
-            colsample_bytree=1,
-            reg_lambda=1.0,
-            learning_rate=0.01,
-            max_depth=7,
-            subsample=0.5,
-        )
+        xgb_params = {
+            "all": {
+                "colsample_bytree": 0.7,
+                "learning_rate": 0.01,
+                "max_depth": 15,
+                "subsample": 0.5,
+            },
+            "short": {
+                "colsample_bytree": 1,
+                "learning_rate": 0.01,
+                "max_depth": 15,
+                "subsample": 0.5,
+            },
+            "medium": {},
+            "long": {
+                "colsample_bytree": 1,
+                "learning_rate": 0.01,
+                "max_depth": 15,
+                "subsample": 0.5,
+            },
+            "positive": {},
+        }
+        bst = xgboost.XGBRegressor(**xgb_params[route_type])
+
         bst.fit(X_train, y_train)
         preds_train = bst.predict(X_train)
         preds_test = bst.predict(X_test)
@@ -257,6 +299,9 @@ def main(data_dir: str, route_type: str) -> None:
 
         train_mae = sklearn.metrics.mean_absolute_error(y_train, preds_train)
         test_mae = sklearn.metrics.mean_absolute_error(y_test, preds_test)
+
+        cv_test_mae.append(test_mae)
+        cv_test_r2.append(test_r2)
 
         train_baseline = np.zeros(y_train.shape) + np.mean(y_train)
         test_baseline = np.zeros(y_test.shape) + np.mean(y_test)
@@ -279,6 +324,9 @@ def main(data_dir: str, route_type: str) -> None:
         print(f"Fold {fold_idx} Test MAE: {test_mae:.3f}")
         print(f"Fold {fold_idx} Test R2: {test_r2:.3f}")
         print("-----")
+
+    print(f"Final Average Test MAE: {np.mean(cv_test_mae):.3f}")
+    print(f"Final Average Test R2: {np.mean(cv_test_r2):.3f}")
     return
 
 
