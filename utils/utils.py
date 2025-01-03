@@ -1,3 +1,4 @@
+import dateutil.parser
 import time
 import os
 
@@ -5,6 +6,24 @@ from tqdm import tqdm
 
 import pandas as pd
 import numpy as np
+
+
+def get_route_cols():
+    cols = [
+        "routeRan_ANGLE",
+        "routeRan_CORNER",
+        "routeRan_CROSS",
+        "routeRan_FLAT",
+        "routeRan_GO",
+        "routeRan_HITCH",
+        "routeRan_IN",
+        "routeRan_OUT",
+        "routeRan_POST",
+        "routeRan_SCREEN",
+        "routeRan_SLANT",
+        "routeRan_WHEEL",
+    ]
+    return cols
 
 
 def load_data(data_dir: str) -> dict[str, pd.DataFrame]:
@@ -65,36 +84,82 @@ def get_player_play_data(
     play_player_data = player_data[game_loc & play_loc]
 
     after_snap = play_seq_data[play_seq_data["frameType"] == "AFTER_SNAP"]
+
     pass_arrival_frame = get_pass_arrival_time_data(play_seq_data)["frameId"].unique()
     pass_arrival_frame = pass_arrival_frame.min().item()
 
     post_snap = after_snap[after_snap["frameId"] <= pass_arrival_frame]
     post_snap = post_snap.sort_values(by="frameId")
 
-    event_1 = play_seq_data["event"] == "ball_snap"
-    event_2 = play_seq_data["event"] == "snap_direct"
-    event_3 = play_seq_data["event"] == "autoevent_ballsnap"
-    snap_data = play_seq_data[event_1 | event_2 | event_3]
+    # Calculating max distance from line of scrimmage as a measure of route
+    # depth
+    snap_data = play_seq_data[play_seq_data["frameType"] == "SNAP"]
     ball_data = snap_data[snap_data["displayName"] == "football"]
     if ball_data.shape[0] > 1:
-        ball_pos = ball_data["y"].iloc[0].item()
+        ball_pos = ball_data["x"].iloc[0].item()
     else:
-        ball_pos = ball_data["y"].item()
+        ball_pos = ball_data["x"].item()
 
     player_ids = post_snap["nflId"].dropna().unique()
     max_dist = [
-        (post_snap[post_snap["nflId"] == player_id]["y"] - ball_pos).max()
+        (post_snap[post_snap["nflId"] == player_id]["x"] - ball_pos).max()
         for player_id in player_ids
     ]
 
-    # TODO: get route depth data
-    #  route_runners = route_data[route_data["wasRunningRoute"] == 1.0]
-    #  runner_seq = play_seq_data[play_seq_data["nflId"].isin(route_runners["nflId"])]
-    #  runner_seq = runner_seq.sort_values(by=["frameId"])
-    #  start_pos = runner_seq["event"]
     dist_df = pd.DataFrame({"nflId": player_ids, "maxDist": max_dist})
     route_data = play_player_data.merge(dist_df, how="outer", on="nflId")
+
+    # Calculating lateral distance changed as a measure of break in the
+    # receiver's route
+    pass_event_1 = after_snap["event"] == "pass_forward"
+    pass_event_2 = after_snap["event"] == "pass_shovel"
+    pass_time_data = after_snap[pass_event_1 | pass_event_2]
+    if pass_time_data.shape[0] != 23:
+        raise RuntimeError()
+
+    catch_time_data = after_snap[after_snap["frameId"] == pass_arrival_frame]
+    pass_time_data = pass_time_data[pass_time_data["displayName"] != "football"]
+    catch_time_data = catch_time_data[catch_time_data["displayName"] != "football"]
+    player_break = get_player_break(pass_time_data, catch_time_data)
+    route_data["break"] = player_break
+
+    # Adding routes run by players aside from the current one
+    route_cols = get_route_cols()
+    other_route_cols = ["other_" + x for x in route_cols]
+    route_data[other_route_cols] = np.zeros(
+        (
+            route_data.shape[0],
+            len(other_route_cols),
+        )
+    )
+
+    for row_idx, _ in route_data.iterrows():
+        no_row_data = route_data.drop(row_idx)
+        other_route_counts = no_row_data[route_cols].sum(axis=0).tolist()
+        route_data.loc[row_idx, other_route_cols] = other_route_counts
+
     return route_data
+
+
+def get_player_break(pass_df: pd.DataFrame, rec_df: pd.DataFrame) -> np.ndarray:
+    a = pass_df["a"].to_numpy()
+    s = pass_df["s"].to_numpy()
+
+    pass_rawtime = dateutil.parser.parse(pass_df["time"].iloc[0])
+    rec_rawtime = dateutil.parser.parse(rec_df["time"].iloc[0])
+    t = (rec_rawtime - pass_rawtime).total_seconds()
+    pos_diff = (0.5 * a * (t**2)) + (s * t)
+    theta = 2 * np.pi * pass_df["dir"]
+    diff_vect = np.sin(theta) + 1j * np.cos(theta)
+    start_pos = pass_df["x"] + 1j * pass_df["y"]
+    final_pos = rec_df["x"] + 1j * rec_df["y"]
+    pred_pos = start_pos + (pos_diff * diff_vect)
+    pred_diff = np.linalg.norm(
+        pred_pos.to_numpy()[:, None] - final_pos.to_numpy()[:, None],
+        ord=2,
+        axis=-1,
+    )
+    return pred_diff
 
 
 def get_pre_snap_data(play_data: pd.DataFrame) -> pd.DataFrame:
@@ -167,8 +232,8 @@ def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
     weeks_data = {}
 
     for week in tqdm(range(1, 10), desc="Loading Weeks data"):
-        #  if week > 3:
-        #      continue
+        if week > 3:
+            continue
         week_fname = f"tracking_week_{week}.csv"
         week_path = os.path.join(data_dir, week_fname)
         weeks_data[week] = pd.read_csv(week_path)

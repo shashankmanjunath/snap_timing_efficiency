@@ -136,6 +136,7 @@ class SeparationDataProcessor:
                     (feat_play_data["gameId"] == gameId)
                     & (feat_play_data["playId"] == playId)
                 ]
+                meta_play_data = meta_play_data.copy()
 
                 play_player_ids = week_play_data["nflId"].dropna().unique()
                 play_players = player_data[player_data["nflId"].isin(play_player_ids)]
@@ -172,27 +173,41 @@ class SeparationDataProcessor:
                     playId,
                 )
 
+                num_routes = play_overall_data["wasRunningRoute"].sum().item()
+                meta_play_data["numRoutes"] = num_routes
+                pass
+
                 # FEATURES:
                 #  1. Features that account for quarterback arm strength
+                #       DIFFICULT
                 #  2. The receiver’s separation at the time the QB targeted them
+                #       DO NOT WANT FOR THIS ANALYSIS
                 #  3. The horizontal and vertical position of the receiver on the
                 #     field at the time of the throw,
+                #       DO NOT WANT FOR THIS ANALYSIS
                 #  4. Where the receiver lined up pre-snap
+                #       TODO: ADD -- DIFFICULT
                 #  5. The distance to the goal line
+                #       INCLUDED
                 #  6. The amount of break in the receiver’s route during the
                 #     football’s journey through the air after it was released
-                #  7. The depth of the QB’s drop, the number of other routes
-                #     that were being run on the play
-                #  8. If the play was a play-action pass or a screen
-                #  9. The number of deep safeties.
+                #       ADDED
+                #  7. The depth of the QB’s drop
+                #       INCLUDED
+                #  8. The number of other routes that were being run on the play
+                #       ADDED
+                #  9. If the play was a play-action pass or a screen
+                #       TODO: Add if screen -- DIFFICULT
+                #  10. The number of deep safeties.
+                #       INCLUDED in coverage type
+                #  11. Other route bypes being run
+                #       ADDED
 
                 play_players_features.append(play_players)
                 play_overall_features.append(play_overall_data)
                 seq_features.append(pre_snap_data)
                 meta_features.append(meta_play_data)
                 label.append(min_dist)
-                # TODO: Add some features about route type, depth, target
-                # receiver/read, etc.?
                 #  if idx > 100:
                 #      break
 

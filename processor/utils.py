@@ -53,6 +53,18 @@ def get_play_overall_columns() -> list[str]:
         "routeRan_SCREEN",
         "routeRan_SLANT",
         "routeRan_WHEEL",
+        "other_routeRan_ANGLE",
+        "other_routeRan_CORNER",
+        "other_routeRan_CROSS",
+        "other_routeRan_FLAT",
+        "other_routeRan_GO",
+        "other_routeRan_HITCH",
+        "other_routeRan_IN",
+        "other_routeRan_OUT",
+        "other_routeRan_POST",
+        "other_routeRan_SCREEN",
+        "other_routeRan_SLANT",
+        "other_routeRan_WHEEL",
         "pff_defensiveCoverageAssignment_2L",
         "pff_defensiveCoverageAssignment_2R",
         "pff_defensiveCoverageAssignment_3L",
@@ -72,6 +84,7 @@ def get_play_overall_columns() -> list[str]:
         "pff_defensiveCoverageAssignment_HOL",
         "pff_defensiveCoverageAssignment_MAN",
         "pff_defensiveCoverageAssignment_PRE",
+        "break",
         "maxDist",
     ]
     return cols
@@ -147,6 +160,7 @@ def get_meta_feature_columns() -> list[str]:
         "timeToThrow",
         "timeInTackleBox",
         "pff_runPassOption",
+        "numRoutes",
         "offenseFormation_EMPTY",
         "offenseFormation_I_FORM",
         "offenseFormation_JUMBO",
@@ -361,6 +375,7 @@ def player_height_in(x: str) -> float:
 class DataFeaturizer:
     def featurize_week(self, week_data: pd.DataFrame) -> pd.DataFrame:
         week_data["o"] = week_data["o"] / 360.0
+        week_data["dir"] = week_data["dir"] / 360.0
 
         cols = ["club", "playDirection"]
         df_dummies = pd.get_dummies(week_data[cols], prefix=cols)
