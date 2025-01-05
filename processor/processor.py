@@ -249,8 +249,8 @@ class SeparationDataProcessor:
                 seq_features.append(pre_snap_data)
                 meta_features.append(meta_play_data)
                 label.append(min_dist)
-                if idx > 100:
-                    break
+                #  if idx > 100:
+                #      break
 
             print(f"No line set failures: {no_line_set_count}")
             print(f"No pass event count: {no_pass_event_count}")
@@ -288,18 +288,19 @@ class SeparationDataProcessor:
                 t2 = time.time()
                 with h5py.File(self.cache_file_fname, "a") as f:
                     f[f"week_{week_num}/separation_arr"] = label
-                    f[f"week_{week_num}/meta_arr"] = meta_arr.astype(np.float32)
+                    f[f"week_{week_num}/meta_arr"] = meta_arr.astype(float)
                     f[f"week_{week_num}/meta_cols"] = meta_cols
-                    f[f"week_{week_num}/seq_arr"] = seq_arr.astype(np.float32)
+                    f[f"week_{week_num}/seq_arr"] = seq_arr.astype(float)
                     f[f"week_{week_num}/seq_mask"] = seq_mask.astype(bool)
                     f[f"week_{week_num}/seq_cols"] = seq_cols
                     f[f"week_{week_num}/play_players_arr"] = play_players_arr.astype(
-                        np.float32
+                        float
                     )
                     f[f"week_{week_num}/play_players_cols"] = play_players_cols
                     f[f"week_{week_num}/play_overall_arr"] = play_overall_arr.astype(
-                        np.float32
+                        float
                     )
                     f[f"week_{week_num}/play_overall_cols"] = play_overall_cols
+                    pass
                 t_save = time.time() - t2
                 print(f"Data saved! Saving time: {t_save:.3f}")

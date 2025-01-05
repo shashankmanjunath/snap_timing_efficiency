@@ -168,8 +168,8 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
     if route_type not in get_route_types():
         raise RuntimeError(f"Route type {route_type} not recognized!")
 
-    train_weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    test_weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    train_weeks = [1]
+    test_weeks = [1]
     #  test_weeks = [8, 9]
 
     proc = processor.SeparationDataProcessor(data_dir)
