@@ -92,7 +92,7 @@ class TransformerTimeSeries(nn.Module):
         self.forecast_input_dim = self.seq_feat_dim + self.n_categorical
 
         self.embedding_layer = EmbeddingLayer(input_dim_features=13, embed_dim=16)
-        self.pos_encoding = PositionalEncoding(self.seq_feat_dim, max_len=1000)
+        #  self.pos_encoding = PositionalEncoding(self.seq_feat_dim, max_len=1000)
 
         self.blocks = nn.ModuleList(
             [
@@ -121,7 +121,7 @@ class TransformerTimeSeries(nn.Module):
         x_category: torch.Tensor,
     ) -> torch.Tensor:
         x_embed = self.embedding_layer(x_seq)
-        x_embed = self.pos_encoding(x_embed)
+        #  x_embed = self.pos_encoding(x_embed)
         for block in self.blocks:
             x_embed = block(x_embed, x_mask)
 

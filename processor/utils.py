@@ -91,6 +91,10 @@ def get_play_overall_columns() -> list[str]:
         "pff_defensiveCoverageAssignment_PRE",
         "break",
         "maxDist",
+        "teamScore",
+        "oppScore",
+        "teamWinProb",
+        "oppWinProb",
     ]
     return cols
 
@@ -153,11 +157,7 @@ def get_meta_feature_columns() -> list[str]:
         "playId",
         "down",
         "yardsToGo",
-        "preSnapHomeScore",
-        "preSnapVisitorScore",
         "absoluteYardlineNumber",
-        "preSnapHomeTeamWinProbability",
-        "preSnapVisitorTeamWinProbability",
         "playClockAtSnap",  # TODO: change?
         "passLength",
         "playAction",
@@ -357,7 +357,9 @@ def extract_seq_arr(
         if len(cols_complement) > 0:
             frame_data = [add_cols(x, cols_complement) for x in frame_data]
 
-        stacked_frames = np.stack([x[cols] for x in frame_data], axis=0)
+        stacked_frames = np.stack(
+            [x[cols].sort_values("nflId") for x in frame_data], axis=0
+        )
         mask = np.ones(stacked_frames.shape)
 
         pad_size = max_seq_len - stacked_frames.shape[0]

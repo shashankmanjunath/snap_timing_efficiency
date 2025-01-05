@@ -1,4 +1,3 @@
-import typing
 import time
 import os
 
@@ -8,8 +7,9 @@ import pandas as pd
 import numpy as np
 import h5py
 
-import processor
+import sequence_model
 import xgb_model
+import processor
 import utils
 
 
@@ -44,6 +44,14 @@ class SeparationDataProcessor:
         X, y = self.load_data(weeks)
         return X, y
 
+    def process_sequence(
+        self, weeks: list[int]
+    ) -> tuple[dict[str, np.ndarray], np.ndarray]:
+        if not self.check_saved_cache():
+            self.calc_features()
+        output_dict, y = self.load_data_seq(weeks)
+        return output_dict, y
+
     def check_saved_cache(self) -> bool:
         if self.force_proc:
             return False
@@ -62,11 +70,12 @@ class SeparationDataProcessor:
         with h5py.File(self.cache_file_fname, "r") as f:
             for week in weeks:
                 week_key = f"week_{week}"
-                if week_key in self.load_cache:
-                    feat_arr_week = self.load_cache[week_key]
+                cache_week_key = f"xgb_week_{week}"
+                if cache_week_key in self.load_cache:
+                    feat_arr_week = self.load_cache[cache_week_key]
                 else:
                     feat_arr_week = xgb_model.create_feature_arr(f[week_key])
-                    self.load_cache[week_key] = feat_arr_week
+                    self.load_cache[cache_week_key] = feat_arr_week
                 X.append(feat_arr_week)
                 label_arr.append(f[week_key]["separation_arr"][()])
 
@@ -75,6 +84,32 @@ class SeparationDataProcessor:
         t_load = time.time() - t1
         print(f"Cache load time: {t_load:.3f}")
         return X, y
+
+    def load_data_seq(
+        self, weeks: list[int]
+    ) -> tuple[dict[str, np.ndarray], np.ndarray]:
+        X = []
+        label_arr = []
+        t1 = time.time()
+        with h5py.File(self.cache_file_fname, "r") as f:
+            for week in weeks:
+                week_key = f"week_{week}"
+                cache_week_key = f"seq_week_{week}"
+                if cache_week_key in self.load_cache:
+                    feat_dict_week = self.load_cache[week_key]
+                else:
+                    feat_dict_week = sequence_model.create_feature_arr(f[week_key])
+                    self.load_cache[cache_week_key] = feat_dict_week
+                X.append(feat_dict_week)
+                label_arr.append(f[week_key]["separation_arr"][()])
+
+        output_dict = {}
+        for k in X[0].keys():
+            output_dict[k] = np.concatenate([x[k] for x in X], axis=0)
+        y = np.concatenate(label_arr, axis=0)
+        t_load = time.time() - t1
+        print(f"Cache load time: {t_load:.3f}")
+        return output_dict, y
 
     def calc_features(self) -> None:
         data = utils.load_data(self.data_dir)
@@ -170,6 +205,8 @@ class SeparationDataProcessor:
                 play_overall_data = utils.get_player_play_data(
                     feat_player_play_data,
                     week_play_data,
+                    data["games"],
+                    meta_play_data,
                     gameId,
                     playId,
                 )
@@ -212,8 +249,8 @@ class SeparationDataProcessor:
                 seq_features.append(pre_snap_data)
                 meta_features.append(meta_play_data)
                 label.append(min_dist)
-                #  if idx > 100:
-                #      break
+                if idx > 100:
+                    break
 
             print(f"No line set failures: {no_line_set_count}")
             print(f"No pass event count: {no_pass_event_count}")

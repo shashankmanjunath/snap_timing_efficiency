@@ -143,11 +143,11 @@ def get_target_feature_cols():
         #  "position_ord",
         "down",
         "yardsToGo",
-        "preSnapHomeScore",
-        "preSnapVisitorScore",
         "absoluteYardlineNumber",
-        "preSnapHomeTeamWinProbability",
-        "preSnapVisitorTeamWinProbability",
+        "teamScore",
+        "oppScore",
+        "teamWinProb",
+        "oppWinProb",
         "playClockAtSnap",
         "passLength",
         "playAction",
@@ -327,6 +327,8 @@ def get_pass_plays(player_play: pd.DataFrame, plays: pd.DataFrame) -> pd.DataFra
 def get_player_play_data(
     player_data: pd.DataFrame,
     play_seq_data: pd.DataFrame,
+    game_data: pd.DataFrame,
+    play_metadata: pd.DataFrame,
     gameId: str,
     playId: str,
 ) -> pd.DataFrame:
@@ -390,6 +392,30 @@ def get_player_play_data(
         other_route_counts = no_row_data[route_cols].sum(axis=0).tolist()
         route_data.loc[row_idx, other_route_cols] = other_route_counts
 
+    # Getting player team score and opposing score
+    game_id_data = game_data[game_data["gameId"] == route_data["gameId"].iloc[0].item()]
+    route_data["teamScore"] = 0.0
+    route_data["oppScore"] = 0.0
+    route_data["teamWinProb"] = 0.0
+    route_data["oppWinProb"] = 0.0
+    route_data = route_data.copy()
+
+    home_team_loc = route_data["teamAbbr"] == game_id_data["homeTeamAbbr"].item()
+    vis_team_loc = route_data["teamAbbr"] == game_id_data["visitorTeamAbbr"].item()
+
+    home_score = play_metadata["preSnapHomeScore"].item()
+    vis_score = play_metadata["preSnapVisitorScore"].item()
+    home_pwin = play_metadata["preSnapHomeTeamWinProbability"].item()
+    vis_pwin = play_metadata["preSnapVisitorTeamWinProbability"].item()
+    route_data.loc[home_team_loc, "teamScore"] = home_score
+    route_data.loc[home_team_loc, "oppScore"] = vis_score
+    route_data.loc[home_team_loc, "teamWinProb"] = home_pwin
+    route_data.loc[home_team_loc, "oppWinProb"] = vis_pwin
+
+    route_data.loc[vis_team_loc, "teamScore"] = vis_score
+    route_data.loc[vis_team_loc, "oppScore"] = home_score
+    route_data.loc[vis_team_loc, "teamWinProb"] = vis_pwin
+    route_data.loc[vis_team_loc, "oppWinProb"] = home_pwin
     return route_data
 
 
@@ -484,6 +510,8 @@ def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
     weeks_data = {}
 
     for week in tqdm(range(1, 10), desc="Loading Weeks data"):
+        if week > 1:
+            break
         week_fname = f"tracking_week_{week}.csv"
         week_path = os.path.join(data_dir, week_fname)
         weeks_data[week] = pd.read_csv(week_path)

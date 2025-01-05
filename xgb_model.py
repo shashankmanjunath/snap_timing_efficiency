@@ -133,7 +133,7 @@ def parameter_search(data_dir: str, route_type: str) -> None:
     if route_type not in get_route_types():
         raise RuntimeError(f"Route type {route_type} not recognized!")
 
-    train_weeks = [1, 2, 3, 4, 5, 6, 7]
+    train_weeks = [1, 2, 3]
     proc = processor.SeparationDataProcessor(data_dir)
     X_train, y_train = proc.process(train_weeks)
 
@@ -142,7 +142,7 @@ def parameter_search(data_dir: str, route_type: str) -> None:
     y_train = y_train[train_idxs]
 
     param_grid = {
-        "max_depth": [3, 5, 7, 15, 25],
+        "max_depth": [7, 15, 25, 100],
         "learning_rate": [0.01],
         "subsample": [0.5, 0.7, 1],
         "colsample_bytree": [0.5, 0.7, 1],
@@ -153,7 +153,7 @@ def parameter_search(data_dir: str, route_type: str) -> None:
     grid_search = sklearn.model_selection.GridSearchCV(
         xgb_model,
         param_grid,
-        cv=5,
+        cv=3,
         #  scoring=sklearn.metrics.mean_absolute_error,
     )
 
@@ -168,8 +168,9 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
     if route_type not in get_route_types():
         raise RuntimeError(f"Route type {route_type} not recognized!")
 
-    train_weeks = [1, 2, 3, 4, 5, 6, 7]
-    test_weeks = [8, 9]
+    train_weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    test_weeks = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    #  test_weeks = [8, 9]
 
     proc = processor.SeparationDataProcessor(data_dir)
 
@@ -184,6 +185,9 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
     X_test = X_test[test_idxs]
     y_test = y_test[test_idxs]
 
+    X_train = X_train[utils.get_target_feature_cols()]
+    X_test = X_test[utils.get_target_feature_cols()]
+
     print(f"Train Samples: {X_train.shape[0]}")
     print(f"Test Samples: {X_test.shape[0]}")
 
@@ -192,7 +196,7 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
         colsample_bytree=1,
         reg_lambda=1.0,
         learning_rate=0.01,
-        max_depth=25,
+        max_depth=7,
         subsample=0.5,
     )
     bst.fit(X_train, y_train)
@@ -226,7 +230,7 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
     print(f"Test R2: {test_r2:.3f}")
     print("-----")
 
-    xgb_fname = f"xgb_model_{route_type}.pkl"
+    xgb_fname = f"xgb_model_{route_type}_all_weeks.pkl"
     print(f"Saving model to {xgb_fname}...")
 
     with open(xgb_fname, "wb") as f:
