@@ -249,8 +249,6 @@ class SeparationDataProcessor:
                 seq_features.append(pre_snap_data)
                 meta_features.append(meta_play_data)
                 label.append(min_dist)
-                if idx > 100:
-                    break
 
             print(f"No line set failures: {no_line_set_count}")
             print(f"No pass event count: {no_pass_event_count}")

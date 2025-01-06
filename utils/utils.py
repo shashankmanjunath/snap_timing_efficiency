@@ -67,7 +67,7 @@ def get_target_feature_cols():
         #  "club_TB",
         #  "club_TEN",
         #  "club_WAS",
-        "club_football",
+        #  "club_football",
         "playDirection_left",
         "playDirection_right",
         "height",
@@ -510,8 +510,6 @@ def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
     weeks_data = {}
 
     for week in tqdm(range(1, 10), desc="Loading Weeks data"):
-        if week > 1:
-            break
         week_fname = f"tracking_week_{week}.csv"
         week_path = os.path.join(data_dir, week_fname)
         weeks_data[week] = pd.read_csv(week_path)
