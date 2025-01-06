@@ -510,8 +510,8 @@ def load_weeks_data(data_dir: str) -> dict[int, pd.DataFrame]:
     weeks_data = {}
 
     for week in tqdm(range(1, 10), desc="Loading Weeks data"):
-        #  if week > 1:
-        #      break
+        if week > 1:
+            break
         week_fname = f"tracking_week_{week}.csv"
         week_path = os.path.join(data_dir, week_fname)
         weeks_data[week] = pd.read_csv(week_path)

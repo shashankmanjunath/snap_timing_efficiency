@@ -168,9 +168,8 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
     if route_type not in get_route_types():
         raise RuntimeError(f"Route type {route_type} not recognized!")
 
-    train_weeks = [1]
-    test_weeks = [1]
-    #  test_weeks = [8, 9]
+    train_weeks = [1, 2, 3, 4, 5, 6, 7]
+    test_weeks = [8, 9]
 
     proc = processor.SeparationDataProcessor(data_dir)
 
@@ -230,7 +229,7 @@ def train_model(data_dir: str, route_type: str) -> xgboost.XGBRegressor:
     print(f"Test R2: {test_r2:.3f}")
     print("-----")
 
-    xgb_fname = f"xgb_model_{route_type}_all_weeks.pkl"
+    xgb_fname = f"xgb_model_{route_type}.pkl"
     print(f"Saving model to {xgb_fname}...")
 
     with open(xgb_fname, "wb") as f:
